@@ -26,6 +26,7 @@ DynamicEntitySpec = { new = function() return {} end }
 Vector4 = { new = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end }
 EulerAngles = { new = function() return { ToQuat = function() return {} end } end }
 Enum = { new = function(a, b) return b end }
+local navmeshEverywhere = true
 local inHand = {}  -- npc id -> what they carry
 local given = 0
 local system = {
@@ -33,6 +34,8 @@ local system = {
 	MoveState = function(_, id) local n = npcs[id] if n and n.target and math.abs(n.pos.x - n.target.x) + math.abs(n.pos.y - n.target.y) < 0.5 then return 5 end return 2 end,
 	Forget = function() end,
 	SetScannerName = function(_, id, name) if npcs[id] then npcs[id].scanName = name end end,
+	NavPoint = function(_, x, y, z) return { x = x, y = y, z = z, w = 1 } end,
+	OnNavmesh = function() return navmeshEverywhere end,
 	GiveCarryItem = function(_, id, pick) if npcs[id] and pick % 10 < 8 then inHand[id] = "Items.locomotion_crowd_cellphone" given = given + 1 return inHand[id] end return "" end,
 }
 function GetSingleton() return { GetSystemRequestsHandler = function() return { IsPreGame = function() return false end } end } end
@@ -48,7 +51,6 @@ ResRef = { FromString = function(p) return p end }
 Vector3 = { new = function() return {} end }
 gameWorkspotSlidingBehaviour = { PlayAtResourcePosition = 0 }
 StaticEntitySpec = { new = function() return {} end }
-local navmeshEverywhere = true
 Game = {
 	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end, GetGame = function() return {} end } end,
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
@@ -114,6 +116,7 @@ local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
 Life.now = function() return simt end
+require("modules/crowd").now = function() return simt end
 local World = require("modules/world")
 tick(1.2)
 check("places loaded", #Places.list > 8000)
@@ -314,6 +317,12 @@ do
 	Crowd.update(0, { [tostring(6)] = true })
 	local w = list
 	check("the game's crowd and civilians near V are removed", w[1].t.gone and w[2].t.gone)
+	-- as the game puts its NPCs in the world: gone half a second later, before V is near
+	local cb = observers["ScriptedPuppet.OnGameAttached"]
+	local fresh, questy = npc(7, { civ = true }), npc(8, { civ = true, quest = true })
+	if cb then cb(fresh) cb(questy) end
+	tick(1)
+	check("the game's civilians are taken out as they appear", cb ~= nil and fresh.t.gone == true and not questy.t.gone)
 	check("quest people, gangs, vendors and ours are kept", not w[3].t.gone and not w[4].t.gone and not w[5].t.gone and not w[6].t.gone)
 end
 

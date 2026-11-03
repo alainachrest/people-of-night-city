@@ -27,6 +27,8 @@ local Life = require("modules/life")
 local Crowd = require("modules/crowd")
 local Traffic = require("modules/traffic")
 local Spots = require("modules/spots")
+local Roads = require("modules/roads")
+World.roads = Roads
 Traffic.log = Life.note
 Traffic.busy = function(id) return Life.spawned[id] ~= nil end
 Traffic.handOver = function(id, ent, place) if PoNC.core then Life.adopt(PoNC.core, id, ent, place) end end
@@ -89,7 +91,17 @@ local function inGame()
 	end) == true
 end
 
+-- Our people (and drivers), by entity: the ones the crowd removal leaves alone.
+Crowd.ours = function()
+	local ours = {}
+	for _, sp in pairs(Life.spawned) do if sp.ent then ours[tostring(sp.ent.hash)] = true end end
+	for _, car in pairs(Traffic.cars) do if car.npc then ours[tostring(car.npc.hash)] = true end end
+	return ours
+end
+
 local function update(dt)
+	-- the game's own NPCs, the frame after they appear
+	if PoNC.ready then pcall(Crowd.frame) end
 	PoNC.timer = PoNC.timer + dt
 	PoNC.popTimer = PoNC.popTimer + dt
 	if PoNC.timer < 1.0 then return end
@@ -105,6 +117,7 @@ local function update(dt)
 		local n = Places.load()
 		log(n .. " homes and workplaces")
 		log(Spots.load() .. " spots to sit, lean and do things at")
+		log(Roads.load() .. " road points")
 	end
 	local v = World.playerPos()
 	if v == nil then return end
@@ -128,17 +141,15 @@ local function update(dt)
 	end
 	local ok3, err3 = pcall(Traffic.update, Core, now, v, function(id) return Life.plan(Core, id, now) end)
 	if not ok3 then log("traffic: " .. tostring(err3)) end
-	local ours = {}
-	for _, sp in pairs(Life.spawned) do if sp.ent then ours[tostring(sp.ent.hash)] = true end end
-	for _, car in pairs(Traffic.cars) do if car.npc then ours[tostring(car.npc.hash)] = true end end
-	local ok2, err2 = pcall(Crowd.update, PoNC.crowdDt or 1.0, ours)
+	local ok2, err2 = pcall(Crowd.update, PoNC.crowdDt or 1.0, Crowd.ours())
 	if not ok2 then log("crowd: " .. tostring(err2)) end
 	PoNC.status = "running"
 	PoNC.ready = true
 	-- what's going on, in the log now and then (and any game call that failed)
 	PoNC.diagTimer = (PoNC.diagTimer or 0) + 1
-	if World.lastError and World.lastError ~= PoNC.lastLoggedError then
-		PoNC.lastLoggedError = World.lastError
+	PoNC.loggedErrors = PoNC.loggedErrors or {}
+	if World.lastError and not PoNC.loggedErrors[World.lastError] then
+		PoNC.loggedErrors[World.lastError] = true   -- each different failure once
 		log("game call failed: " .. World.lastError)
 	end
 	if PoNC.diagTimer >= 30 then
@@ -241,6 +252,7 @@ end
 registerForEvent("onInit", function()
 	loadSettings()
 	World.init()
+	Crowd.init()
 	log("v" .. PoNC.version .. " loaded")
 end)
 registerForEvent("onUpdate", function(dt) update(dt) end)

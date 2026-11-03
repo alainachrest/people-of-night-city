@@ -55,6 +55,39 @@ function Crowd.keep(npc, ours)
 	return nil
 end
 
+-- The moment the game puts one of its NPCs in the world (which it does some
+-- way off, as V comes near), it's looked at half a second later, once the
+-- game has finished setting it up (so a quest NPC is known to be one), and, if it's one of the game's civilians, taken out
+-- before V sees it. The sweep below is only for anyone already there.
+Crowd.arrived = {}
+function Crowd.now() return os.clock() end
+Crowd.ours = function() return {} end   -- set by init: tostring(entity hash) -> true
+
+function Crowd.init()
+	pcall(function()
+		Observe("ScriptedPuppet", "OnGameAttached", function(self)
+			if Crowd.settings.replace then table.insert(Crowd.arrived, { npc = self, at = Crowd.now() }) end
+		end)
+	end)
+end
+
+function Crowd.frame()
+	if #Crowd.arrived == 0 then return end
+	local now, list, later = Crowd.now(), {}, {}
+	for _, a in ipairs(Crowd.arrived) do
+		if now - a.at >= 0.5 then table.insert(list, a.npc) else table.insert(later, a) end
+	end
+	Crowd.arrived = later
+	if #list == 0 then return end
+	local ours = Crowd.ours()
+	for _, npc in ipairs(list) do
+		local ok, isNpc = pcall(function() return npc:IsNPC() end)
+		if ok and isNpc and Crowd.keep(npc, ours) == nil then
+			if World.remove(npc) then Crowd.removed = Crowd.removed + 1 end
+		end
+	end
+end
+
 -- One sweep near V. `ours`: tostring(entity hash) -> true for the people this mod spawned.
 function Crowd.update(dt, ours)
 	if not Crowd.settings.replace then return end

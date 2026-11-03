@@ -175,6 +175,32 @@ public class PoNCSystem extends ScriptableSystem {
         return -1;
     }
 
+    // Navmesh --------------------------------------------------------------
+
+    // Is there navmesh (for people) at this point, within `tolerance` metres?
+    public func OnNavmesh(x: Float, y: Float, z: Float, tolerance: Float) -> Bool {
+        let player = GameInstance.GetPlayerSystem(GetGameInstance()).GetLocalPlayerControlledGameObject();
+        let nav = GameInstance.GetAINavigationSystem(GetGameInstance());
+        if !IsDefined(nav) || !IsDefined(player) {
+            return false;
+        }
+        return nav.IsPointOnNavmesh(player, Vector4(x, y, z, 1.0), tolerance);
+    }
+
+    // A point on the navmesh (for people) within `radius` of a point; W is 0
+    // if there's none.
+    public func NavPoint(x: Float, y: Float, z: Float, radius: Float) -> Vector4 {
+        let nav = GameInstance.GetAINavigationSystem(GetGameInstance());
+        if !IsDefined(nav) {
+            return Vector4(0.0, 0.0, 0.0, 0.0);
+        }
+        let res = nav.FindPointInSphereOnlyHumanNavmesh(Vector4(x, y, z, 1.0), radius, NavGenAgentSize.Human, false);
+        if Equals(res.status, worldNavigationRequestStatus.OK) {
+            return Vector4(res.point.X, res.point.Y, res.point.Z, 1.0);
+        }
+        return Vector4(0.0, 0.0, 0.0, 0.0);
+    }
+
     // Things in hand ------------------------------------------------------
 
     // What someone can carry, by the walk it goes with, given the weather:

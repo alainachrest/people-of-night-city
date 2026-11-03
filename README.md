@@ -65,8 +65,9 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     umbrella when it rains (in rain, fewer other things; in a downpour, only
     umbrellas). The same person carries the same thing in the same weather.
     They put it away to sit, lean or drive, and take it out again after;
-  - **the game's other people** (standing, sitting, leaning about) are removed
-    within 150 m of V, so the only civilians around are ours. Kept: anyone in a
+  - **the game's other people** (standing, sitting, leaning about) are taken
+    out half a second after the game puts them in the world (which it does
+    some way off), before V gets near; any already there go within 150 m of V, so the only civilians around are ours. Kept: anyone in a
     quest, vendors, police, gangs and other non-civilians, companions, NPCs other
     mods spawned, and anyone in combat. "Replace the game's people with ours" in
     the window turns this off;

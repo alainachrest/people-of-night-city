@@ -173,9 +173,11 @@ function World.drive(vehId, x, y, z, minSpeed, maxSpeed)
 	end) == true
 end
 
--- A point on the roads (the vehicles' navmesh) near a point, or nil.
+-- A point on the roads near a point, or nil (set by Roads, from the game's
+-- vehicle navmesh).
 function World.roadPointNear(x, y, z, radius)
-	return World.navPointNear(x, y, z, radius, "Vehicle")
+	if World.roads then return World.roads.near(x, y, z, radius) end
+	return nil
 end
 
 -- Every NPC within r metres of V (the game's and anyone else's).
@@ -312,32 +314,21 @@ end
 
 -- Navmesh ------------------------------------------------------------------------
 
-local function nav()
-	return try(function() return Game.GetNavigationSystem() end)
-		or try(function() return Game.NavigationSystem() end)
-end
+-- Asked of the game's navigation system through PoNCSystem (the way it works
+-- from scripts).
 
 -- Is there navmesh at a point (within `tolerance` metres)?
 function World.onNavmesh(x, y, z, tolerance)
-	local ns = nav()
-	if ns == nil then return nil end
-	return try(function() return ns:IsPointOnNavmesh(Vector4.new(x, y, z, 1.0), tolerance or 0.5) end)
+	return try(function() return system():OnNavmesh(x, y, z, tolerance or 0.5) end)
 end
 
 -- A point on the navmesh within `radius` of a point, or nil.
 function World.navPointNear(x, y, z, radius, agent)
-	local ns = nav()
-	if ns == nil then return nil end
+	if agent == "Vehicle" then return World.roadPointNear(x, y, z, radius) end
 	return try(function()
-		local r = ns:FindPointInSphere(Vector4.new(x, y, z, 1.0), radius or 3.0, Enum.new("NavGenAgentSize", agent or "Human"), false)
-		if r == nil or r.point == nil then return nil end
-		-- worldNavigationRequestStatus: OK (0) when a point was found
-		local status = r.status
-		local text = tostring(status)
-		local ok = status == nil or status == 0 or text:find("OK") ~= nil or text:find("Success") ~= nil
-		if not ok then return nil end
-		if r.point.x == 0 and r.point.y == 0 and r.point.z == 0 then return nil end
-		return { x = r.point.x, y = r.point.y, z = r.point.z }
+		local p = system():NavPoint(x, y, z, radius or 3.0)
+		if p == nil or p.w == 0 then return nil end
+		return { x = p.x, y = p.y, z = p.z }
 	end)
 end
 
