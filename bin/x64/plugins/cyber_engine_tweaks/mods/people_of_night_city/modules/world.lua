@@ -88,6 +88,23 @@ function World.walk(id, x, y, z, run)
 	return try(function() return system():WalkNPC(id, x, y, z, run == true) end) == true
 end
 
+-- Walks an NPC to a point with a move policy (the other way the game moves
+-- NPCs), for when the walk order doesn't take.
+function World.walkPolicy(id, x, y, z, run)
+	return try(function()
+		local npc = Game.FindEntityByID(id)
+		if npc == nil then return false end
+		local policy = MovePolicies.new()
+		policy:SetDestinationPosition(Vector4.new(x, y, z, 1))
+		policy:SetMovementType(run and "Run" or "Walk")
+		policy:SetIgnoreNavigation(false)
+		policy:SetStopOnObstacle(false)
+		policy:SetDistancePolicy(0.8, 0.5)
+		npc:GetMovePolicesComponent():AddPolicies(policy)
+		return true
+	end) == true
+end
+
 -- 0 NotExecuting, 1 Enqueued, 2 Executing, 3 Cancelled, 4 Interrupted, 5 Success, 6 Failure, -1 none
 function World.moveState(id)
 	return try(function() return system():MoveState(id) end) or -1
@@ -160,7 +177,10 @@ function World.hasDriver(vehId)
 	return try(function()
 		local veh = Game.FindEntityByID(vehId)
 		if veh == nil then return false end
-		return VehicleComponent.HasActiveDriver(Game.GetPlayer():GetGame(), veh, vehId)
+		local game = Game.GetPlayer():GetGame()
+		local ok, r = pcall(function() return VehicleComponent.HasActiveDriver(game, vehId) end)
+		if ok then return r end
+		return VehicleComponent.HasActiveDriver(veh, vehId)
 	end) == true
 end
 

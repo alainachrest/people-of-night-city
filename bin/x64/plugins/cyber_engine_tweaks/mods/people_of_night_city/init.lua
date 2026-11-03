@@ -164,6 +164,10 @@ local function update(dt)
 		for k, n in pairs(kinds) do t[#t + 1] = k .. " " .. n end
 		log(string.format("people %d, out near V %d (%s), cars %d (%s), game NPCs removed %d, spots used %d, walks re-sent %d",
 			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Traffic.summary(), Crowd.removed, Life.usedSpots, Life.rewalks))
+		local ms = {}
+		for k, n in pairs(Life.moveStates) do ms[#ms + 1] = tostring(k) .. ":" .. n end
+		log("walk order states when re-sent (0 not running, 1 queued, 2 running, 3 cancelled, 4 interrupted, 6 failed, -1 none): "
+			.. table.concat(ms, " ") .. "; move-policy walks " .. Life.policyWalks)
 	end
 end
 

@@ -42,7 +42,7 @@ function GetSingleton() return { GetSystemRequestsHandler = function() return { 
 local mounted, drives = {}, 0
 function NewObject(cls) local o = { cls = cls } function o:Copy() return self end return o end
 MountEventData = { new = function() return {} end }
-VehicleComponent = { HasActiveDriver = function(_, veh, id) return mounted[id] ~= nil end }
+VehicleComponent = { HasActiveDriver = function(_, id) return mounted[id] ~= nil end }
 Vector4.Vector4To3 = function(v) return v end
 local devices, playing, observers, assembleQueue = {}, {}, {}, {}
 TweakDBID = { new = function(s) return s end }

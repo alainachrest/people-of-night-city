@@ -28,6 +28,8 @@ local Life = {
 	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20, useSpots = true },
 	usedSpots = 0,      -- times someone has sat down, leant, ... (for the window)
 	rewalks = 0,        -- walk orders given again because they didn't take
+	policyWalks = 0,    -- of those, sent the move-policy way
+	moveStates = {},    -- the walk order's state when it was re-sent (for the log)
 	reach = 600,        -- people living this close to V can be out walking V's streets
 	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
@@ -381,7 +383,14 @@ local function keepGoing(s, t, here)
 	local ms = World.moveState(s.ent)
 	local idle = ms ~= 1 and ms ~= 2 and ms ~= 5
 	if (idle and now - (t.since or 0) > 1.5) or now - (t.movedAt or now) > 4 then
-		t.sent = World.walk(s.ent, t.to.x, t.to.y, t.to.z, t.run)
+		Life.moveStates[ms] = (Life.moveStates[ms] or 0) + 1
+		if (t.retries or 0) >= 2 then
+			-- the walk order isn't moving them: the move-policy way instead
+			t.sent = World.walkPolicy(s.ent, t.to.x, t.to.y, t.to.z, t.run)
+			Life.policyWalks = Life.policyWalks + 1
+		else
+			t.sent = World.walk(s.ent, t.to.x, t.to.y, t.to.z, t.run)
+		end
 		t.since, t.movedAt = now, now
 		t.retries = (t.retries or 0) + 1
 		Life.rewalks = Life.rewalks + 1
