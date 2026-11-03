@@ -9,6 +9,9 @@
 --             from sight, with one they walk inside and stay there
 --   inside    a place with an interior: they're there, seen, while V is near
 --   around    no place to be (errands, the street): they wander near home
+--   rough     homeless people at the spot they sleep rough by (asleep there too)
+--   passing   people out and about whose home is further off: they walk V's
+--             streets in place of the game's crowd (which this mod turns off)
 --
 -- Asleep at home, or anywhere V isn't, they're only in the numbers.
 
@@ -20,7 +23,9 @@ local Life = {
 	spawned = {},       -- person id -> { ent, task, ... }
 	count = 0,
 	plans = {},         -- person id -> cached plan for one game hour
-	settings = { enabled = true, radius = 120, despawn = 170, max = 24 },
+	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20 },
+	reach = 600,        -- people living this close to V can be out walking V's streets
+	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
 	speed = 9,          -- metres per game second travelling between places (by car, train)
 	log = {},
@@ -47,7 +52,7 @@ end
 Life.routines = {}
 local function routineOf(Core, id)
 	local r = Life.routines[id]
-	if r and os.clock() - r.at < 60 then return r.list end
+	if r and os.clock() - r.at < 600 then return r.list end
 	local list = Core.routines.get(id) or {}
 	Life.routines[id] = { list = list, at = os.clock() }
 	return list
@@ -107,6 +112,13 @@ local function scene(Core, id, now, v, r)
 	local p = Core.people.get(id)
 	if p == nil or p.status == "dead" or p.status == "missing" then return nil end
 	local home = p.home and Places.get(p.home)
+	if Population.homeless[id] and home and (c.cur.place == nil or c.cur.place == p.home) then
+		-- sleeping rough or hanging about their spot: always there, never indoors
+		if dist(home, v) < r then
+			return { kind = "rough", place = home, asleep = c.cur.activity == "sleep" }
+		end
+		return nil
+	end
 	if t < c.leave then
 		-- still where they were before
 		local where = c.from
@@ -189,6 +201,32 @@ local function toward(p, other, d)
 	return { x = p.x + dx / len * math.min(d, len), y = p.y + dy / len * math.min(d, len), z = p.z }
 end
 
+-- Where a scene's NPC first appears.
+local function startPoint(Core, sc, v, id)
+	local pl = sc.place
+	if sc.kind == "leaving" then return pl end
+	if sc.kind == "inside" then return Places.inside(World, pl, v) or pl end
+	if sc.kind == "arriving" then
+		-- part way along, by how much of the walk is left
+		local left = math.max(0, math.min(1, (sc.left or Life.window) / Life.window))
+		return toward(pl, sc.other or v, 10 + 35 * left)
+	end
+	if sc.kind == "rough" then
+		-- their own patch by the door, the same one every time
+		local r = Core.Rng.new("ponc", "patch", id or "")
+		local a = r:next() * math.pi * 2
+		local d = 2 + r:next() * 4
+		return World.navPointNear(pl.x + math.cos(a) * d, pl.y + math.sin(a) * d, pl.z, 3.0) or pl
+	end
+	if sc.kind == "passing" then return sc.from end
+	if sc.kind == "around" then
+		local r = Core.Rng.new("ponc", "around", pl.id, math.floor(os.clock() / 60))
+		local a = r:next() * math.pi * 2
+		return { x = pl.x + math.cos(a) * 20, y = pl.y + math.sin(a) * 20, z = pl.z }
+	end
+	return pl
+end
+
 -- Gives a spawned person something to do for their scene.
 local function direct(Core, s, sc, v)
 	s.scene, s.place = sc.kind, sc.place and sc.place.id
@@ -217,24 +255,6 @@ local function direct(Core, s, sc, v)
 		s.task.sent = World.walk(s.ent, s.task.to.x, s.task.to.y, s.task.to.z, s.task.run)
 		s.task.since = os.clock()
 	end
-end
-
--- Where a scene's NPC first appears.
-local function startPoint(Core, sc, v)
-	local pl = sc.place
-	if sc.kind == "leaving" then return pl end
-	if sc.kind == "inside" then return Places.inside(World, pl, v) or pl end
-	if sc.kind == "arriving" then
-		-- part way along, by how much of the walk is left
-		local left = math.max(0, math.min(1, (sc.left or Life.window) / Life.window))
-		return toward(pl, sc.other or v, 10 + 35 * left)
-	end
-	if sc.kind == "around" then
-		local r = Core.Rng.new("ponc", "around", pl.id, math.floor(os.clock() / 60))
-		local a = r:next() * math.pi * 2
-		return { x = pl.x + math.cos(a) * 20, y = pl.y + math.sin(a) * 20, z = pl.z }
-	end
-	return pl
 end
 
 -- The finishing touches once the NPC is really there: its look is kept (so it
@@ -283,6 +303,60 @@ local function step(Core, s, v)
 	end
 end
 
+---------------------------------------------------------------------------
+-- The streets: people out and about walk past V (in place of the game's crowd)
+---------------------------------------------------------------------------
+
+local function isOut(c, t)
+	if c.cur == nil then return false end
+	if t >= c.leave and t < c.arrive then return true end           -- on their way somewhere
+	return c.cur.place == nil and c.cur.activity ~= "sleep"          -- errands, the street
+end
+
+-- A walk past V: from a point on the navmesh some way off, across to the far side.
+local function passingWalk(Core, id, v, half)
+	local r = Core.Rng.new("ponc", "pass", id, half)
+	local a = r:next() * math.pi * 2
+	local d1, d2 = 55 + r:next() * 45, 55 + r:next() * 45
+	local b = a + math.pi + (r:next() - 0.5) * 1.6
+	local from = World.navPointNear(v.x + math.cos(a) * d1, v.y + math.sin(a) * d1, v.z, 12.0)
+	local to = World.navPointNear(v.x + math.cos(b) * d2, v.y + math.sin(b) * d2, v.z, 12.0)
+	if from == nil or to == nil then return nil end
+	if math.abs(from.z - v.z) > 12 then return nil end -- not on a roof or under the street
+	from.id, to.id = "street", "street"
+	return { kind = "passing", place = from, from = from, to = to }
+end
+
+local function passers(Core, now, v, taken)
+	local want = Life.settings.pedestrians or 0
+	if want <= 0 then return {} end
+	local half = math.floor(now.seconds / 1800)
+	local have = 0
+	for _, s in pairs(Life.spawned) do if s.scene == "passing" then have = have + 1 end end
+	if have >= want then return {} end
+	-- the locals in a fixed order for this half hour (the same save, the same faces)
+	local ids = Population.locals(v.x, v.y, Life.reach)
+	local key = {}
+	for _, id in ipairs(ids) do key[id] = Core.Rng.new("ponc", "out", id, half):next() end
+	table.sort(ids, function(a, b) return key[a] < key[b] end)
+	local out, looked = {}, 0
+	for _, id in ipairs(ids) do
+		if have + #out >= want or looked > 80 then break end
+		if not taken[id] and not Life.spawned[id] and Life.walked[id] ~= half then
+			looked = looked + 1
+			local p = Core.people.get(id)
+			if p and p.status ~= "dead" and p.status ~= "missing" and p.status ~= "hurt" then
+				local c = plan(Core, id, now)
+				if isOut(c, now.seconds) then
+					local sc = passingWalk(Core, id, v, half)
+					if sc then table.insert(out, { id = id, sc = sc }) end
+				end
+			end
+		end
+	end
+	return out, half
+end
+
 -- One pass: who should be seen near V, spawn or direct them, and tidy up.
 function Life.update(Core, now, v)
 	if not Life.settings.enabled then
@@ -304,13 +378,25 @@ function Life.update(Core, now, v)
 		local s = Life.spawned[w.id]
 		if s == nil then
 			if Life.count < Life.settings.max then
-				s = spawn(Core, w.id, startPoint(Core, w.sc, v), w.sc)
+				s = spawn(Core, w.id, startPoint(Core, w.sc, v, w.id), w.sc)
 				if s then s.pending = w.sc end
 			end
 		elseif s.scene ~= w.sc.kind or s.place ~= (w.sc.place and w.sc.place.id) then
 			direct(Core, s, w.sc, v)
 		elseif s.task == nil and w.sc.kind == "around" and World.entity(s.ent) then
 			direct(Core, s, w.sc, v)
+		end
+	end
+	-- people walking the streets: they keep walking until they're past
+	for _, s in pairs(Life.spawned) do if s.scene == "passing" then keep[s.id] = true end end
+	local walkers, half = passers(Core, now, v, keep)
+	for _, w in ipairs(walkers) do
+		if Life.count >= Life.settings.max + (Life.settings.pedestrians or 0) then break end
+		local s = spawn(Core, w.id, w.sc.from, w.sc)
+		if s then
+			s.pending = w.sc
+			keep[w.id] = true
+			Life.walked[w.id] = half
 		end
 	end
 	for id, s in pairs(Life.spawned) do
@@ -323,7 +409,7 @@ function Life.update(Core, now, v)
 		-- no longer part of any scene: finish what they're doing, then go
 		if Life.spawned[id] and not keep[id] and s.task and not s.task.vanish and not s.pending then
 			s.task.vanish = true
-			if s.scene == "inside" or s.scene == "around" then despawn(Core, s, "scene over") end
+			if s.scene == "inside" or s.scene == "around" or s.scene == "rough" then despawn(Core, s, "scene over") end
 		end
 	end
 end
@@ -331,6 +417,7 @@ end
 function Life.clear(Core)
 	for _, s in pairs(Life.spawned) do despawn(Core, s, "cleared") end
 	Life.plans = {}
+	Life.walked = {}
 end
 
 return Life

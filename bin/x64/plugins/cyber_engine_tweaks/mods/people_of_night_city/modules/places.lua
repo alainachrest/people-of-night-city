@@ -56,7 +56,8 @@ function Places.near(x, y, r, use)
 end
 
 function Places.name(p)
-	local d = DISTRICT_NAMES[p.district] or p.district
+	if p.id == "street" then return "the street" end
+	local d = DISTRICT_NAMES[p.district] or p.district or "Night City"
 	if p.use == "home" then return "Apartments, " .. d end
 	if p.door == "shutter" then return "Shop, " .. d end
 	return "Business, " .. d

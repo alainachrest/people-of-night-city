@@ -59,7 +59,7 @@ end
 local function saveSettings()
 	local f = io.open(SETTINGS_FILE, "w")
 	if not f then return end
-	for _, k in ipairs({ "enabled", "radius", "despawn", "max" }) do
+	for _, k in ipairs({ "enabled", "radius", "despawn", "max", "pedestrians" }) do
 		f:write(k .. " = " .. tostring(Life.settings[k]) .. "\n")
 	end
 	f:close()
@@ -155,6 +155,8 @@ local function draw()
 	if changed then Life.settings.radius = r Life.settings.despawn = r + 50 saveSettings() end
 	r, changed = ImGui.SliderInt("Most at once", Life.settings.max, 4, 60)
 	if changed then Life.settings.max = r saveSettings() end
+	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 40)
+	if changed then Life.settings.pedestrians = r saveSettings() end
 	if ImGui.Button("Clear everyone near me") and Core then Life.clear(Core) end
 	if Core and Core.state() and ImGui.CollapsingHeader("People near you") then
 		local lines = nearbyLines(Core)

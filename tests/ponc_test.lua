@@ -91,6 +91,16 @@ check("they have a work block in their routine", worker and (function()
 	for _, b in ipairs(Core.routines.get(worker.id)) do if b.activity == "work" then return true end end
 end)())
 
+local jobless, homeless, rough = 0, 0, 0
+for id in pairs(Population.known) do
+	local p = Core.people.get(id)
+	if p.job == "unemployed" and p.lifestyle ~= "street" then jobless = jobless + 1 end
+	if Population.homeless[id] then homeless = homeless + 1 if p.employed == false and (p.wage or 0) == 0 then rough = rough + 1 end end
+end
+print("unemployed", jobless, "homeless", homeless)
+check("some people are out of work", jobless > 0)
+check("some people are homeless, with no job or wage", homeless > 0 and rough == homeless)
+
 -- same save, same people
 local before = {}
 for id in pairs(Population.known) do before[id] = Core.people.get(id).name end
@@ -116,7 +126,9 @@ end
 check("people are seen near V during the day", seen > 0)
 check("people leave and arrive", (kinds.leaving or 0) > 0 and (kinds.arriving or 0) > 0)
 for k, n in pairs(kinds) do print("scene", k, n) end
-check("never more than the limit", seen <= Life.settings.max)
+check("never more than the limit", seen <= Life.settings.max + Life.settings.pedestrians)
+check("people walk the streets past V", (kinds.passing or 0) > 0)
+check("homeless people are at their spot", (kinds.rough or 0) > 0)
 local named = 0
 for _, n in pairs(npcs) do if n.scanName then named = named + 1 end end
 check("spawned people scan as themselves", named > 0)
@@ -183,7 +195,8 @@ if s then
 	for d = 14, 15 do
 		clock = 3600 * 24 * d + 3600 * 12
 		tick(2.2)
-		if Life.spawned[id] then again = true end
+		-- (their body can still be lying there; a new NPC for them would be them coming back)
+		if Life.spawned[id] and Life.spawned[id] ~= s then again = true end
 	end
 	check("the dead don't come back", not again)
 else

@@ -11,6 +11,8 @@ local Population = {
 	homes = {},     -- place id -> { person ids }
 	byHome = {},    -- place id -> ids (same as homes)
 	byWork = {},    -- place id -> ids of people who work there
+	streets = {},   -- place id -> ids of the homeless people who sleep rough by it
+	homeless = {},  -- person id -> the place they sleep rough by
 	known = {},     -- person id -> true
 	count = 0,
 	radius = 700,   -- homes this close to V get their people
@@ -27,6 +29,14 @@ local LIFE = {
 	pacifica     = { street = 4, worker = 2, young = 2, nightlife = 1 },
 	badlands     = { nomad = 5, worker = 1, street = 1 },
 }
+-- How likely someone is to be out of work, by district.
+local UNEMPLOYED = {
+	watson = 0.15, westbrook = 0.06, citycenter = 0.04, heywood = 0.12,
+	santodomingo = 0.15, pacifica = 0.35, badlands = 0.2,
+}
+-- One door in this many has people sleeping rough by it (more in poor districts).
+local ROUGH = { pacifica = 12, santodomingo = 25, watson = 25, heywood = 35, badlands = 30, westbrook = 80, citycenter = 120 }
+
 local JOBS = {
 	shutter = { "shopkeeper", "shop assistant", "stock clerk" },
 	freight = { "warehouse worker", "loader", "forklift driver" },
@@ -82,6 +92,7 @@ function Population.populate(Core, home)
 	local ids = Core.people.populate(home.id, {
 		count = count, lifestyle = life, district = home.district, home = home.id,
 		job = "unemployed", employed = working and #jobs > 0, workplaces = jobs, remember = false,
+		unemployed = UNEMPLOYED[home.district] or 0.1,
 	}) or {}
 	Population.homes[home.id] = ids
 	for _, id in ipairs(ids) do
@@ -98,6 +109,29 @@ function Population.populate(Core, home)
 	return ids
 end
 
+-- People with no home, sleeping rough by a door on the street. Made the same
+-- way: the same save, the same people in the same spots.
+function Population.populateStreet(Core, spot)
+	if Population.streets[spot.id] then return Population.streets[spot.id] end
+	local rng = Core.Rng.new("ponc", "rough", spot.id)
+	local ids = Core.people.populate("ponc:street:" .. spot.n, {
+		count = rng:int(1, 3), lifestyle = "street", district = spot.district, home = spot.id,
+		job = "unemployed", employed = false, unemployed = 1, remember = false,
+	}) or {}
+	Population.streets[spot.id] = ids
+	for _, id in ipairs(ids) do
+		Population.known[id] = true
+		Population.homeless[id] = spot.id
+		Population.count = Population.count + 1
+	end
+	return ids
+end
+
+function Population.isRoughSpot(p)
+	local every = ROUGH[p.district] or 40
+	return p.n % every == 0
+end
+
 -- Gives the homes around V their people (a few per call, so it never stalls).
 function Population.around(Core, x, y, budget)
 	local made = 0
@@ -108,6 +142,11 @@ function Population.around(Core, x, y, budget)
 			Population.populate(Core, h)
 			made = made + 1
 			if made >= (budget or 20) then break end
+		end
+	end
+	for _, p in ipairs(Places.near(x, y, Population.radius)) do
+		if Population.isRoughSpot(p) and not Population.streets[p.id] then
+			Population.populateStreet(Core, p)
 		end
 	end
 	return made
@@ -123,12 +162,27 @@ function Population.involved(x, y, r)
 		for _, id in ipairs(Population.byWork[p.id] or {}) do
 			if not seen[id] then seen[id] = true table.insert(out, id) end
 		end
+		for _, id in ipairs(Population.streets[p.id] or {}) do
+			if not seen[id] then seen[id] = true table.insert(out, id) end
+		end
+	end
+	return out
+end
+
+-- Everyone made so far whose home (or rough-sleeping spot) is within r metres
+-- of (x, y): the people who could be out and about there.
+function Population.locals(x, y, r)
+	local out = {}
+	for _, p in ipairs(Places.near(x, y, r)) do
+		for _, id in ipairs(Population.byHome[p.id] or {}) do table.insert(out, id) end
+		for _, id in ipairs(Population.streets[p.id] or {}) do table.insert(out, id) end
 	end
 	return out
 end
 
 function Population.reset()
 	Population.homes, Population.byHome, Population.byWork, Population.known, Population.count = {}, {}, {}, {}, 0
+	Population.streets, Population.homeless = {}, {}
 end
 
 return Population

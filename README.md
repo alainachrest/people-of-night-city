@@ -17,7 +17,13 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
 - **People**: the first time V comes within 700 m of a home, the core makes its
   people (1-4, `Core.people.populate`), from the save's seed: the same save always
   has the same people. Their way of life depends on the district. Working people
-  work at one of the workplaces nearest their home.
+  work at one of the workplaces nearest their home. Some are out of work (more
+  in poor districts: 35% in Pacifica, 4% in City Center).
+- **Homeless people** sleep rough by a door on the street (1-3 at one door in
+  12 in Pacifica, fewer elsewhere). They have no home, no job and no wage, and
+  they're at their spot day and night, asleep there too.
+- **Money** is the core's: everyone pays living costs daily; only people with a
+  job are paid, weekly (on Fridays).
 - **Their day** is their routine in the core (`Core.routines`): sleep, work,
   leisure, errands. When a routine moves someone to a new place, they leave a
   little after the hour, travel (by car or train, out of sight), and arrive.
@@ -28,6 +34,13 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     again. If there's navmesh on both sides of the door (an interior V can walk
     into), they walk inside and stay there, seen;
   - someone with no place to be wanders near home;
+  - homeless people are at their spot;
+  - **the streets**: the game's own crowd of pedestrians is turned off
+    (`engine/config/platform/pc/people_of_night_city.ini`; traffic is left as
+    it is; delete the file to have the game's crowd back). In its place, people
+    who live within 600 m of V and are out (on errands, on their way somewhere)
+    walk past V (20 at once, adjustable). Each walks past at most once every
+    half hour;
   - asleep, or anywhere V isn't, they're only in the numbers.
 - Each person keeps their look (the appearance they first had), scans as
   themselves (name and any open affiliation), and is bound to their NPC in the
