@@ -1,6 +1,6 @@
 # People of Night City
 
-A Cyberpunk 2077 mod: the people in the CyberScript shared core's registry
+The people in the CyberScript shared core's registry
 living their lives in the world. They go to work, come home and wander their
 neighbourhood, and you can meet the same person again and again.
 
