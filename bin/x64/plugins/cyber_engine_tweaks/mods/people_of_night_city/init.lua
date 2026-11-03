@@ -28,6 +28,7 @@ local Crowd = require("modules/crowd")
 local Traffic = require("modules/traffic")
 local Spots = require("modules/spots")
 local Roads = require("modules/roads")
+local Clock = require("modules/clock")
 World.roads = Roads
 Traffic.log = Life.note
 Traffic.busy = function(id) return Life.spawned[id] ~= nil end
@@ -99,7 +100,27 @@ Crowd.ours = function()
 	return ours
 end
 
+local function paused()
+	return World.try(function() return Game.GetSystemRequestsHandler():IsGamePaused() end) == true
+end
+
 local function update(dt)
+	-- nothing at all while the game is paused; then a moment to settle
+	if paused() then
+		Clock.pause()
+		PoNC.settle = nil
+		PoNC.status = "paused"
+		return
+	end
+	if Clock.pausedAt then
+		Clock.resume()
+		PoNC.settle = 2.0
+	end
+	if PoNC.settle then
+		PoNC.settle = PoNC.settle - dt
+		if PoNC.settle > 0 then return end
+		PoNC.settle = nil
+	end
 	-- the game's own NPCs, the frame after they appear
 	if PoNC.ready then pcall(Crowd.frame) end
 	PoNC.timer = PoNC.timer + dt

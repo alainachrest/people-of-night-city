@@ -30,6 +30,7 @@ local Life = {
 	rewalks = 0,        -- walk orders given again because they didn't take
 	policyWalks = 0,    -- of those, sent the move-policy way
 	moveStates = {},    -- the walk order's state when it was re-sent (for the log)
+	spawnsPerPass = 6,  -- new NPCs a second at most (the game takes them a few at a time)
 	reach = 600,        -- people living this close to V can be out walking V's streets
 	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
@@ -38,7 +39,7 @@ local Life = {
 }
 
 -- Real time in seconds (tests set their own).
-function Life.now() return os.clock() end
+function Life.now() return require("modules/clock").now() end
 
 local function note(text)
 	table.insert(Life.log, text)
@@ -553,7 +554,7 @@ function Life.update(Core, now, v)
 	end)
 	local keep = {}
 	-- the people walking past V have their own limit
-	local inScenes = 0
+	local inScenes, spawnedNow = 0, 0
 	for _, s in pairs(Life.spawned) do if s.scene ~= "passing" then inScenes = inScenes + 1 end end
 	for i, w in ipairs(wanted) do
 		if i > Life.settings.max then break end
@@ -562,9 +563,9 @@ function Life.update(Core, now, v)
 		if s == nil and Traffic.cars[w.id] then
 			-- in their car
 		elseif s == nil then
-			if inScenes < Life.settings.max then
+			if inScenes < Life.settings.max and spawnedNow < Life.spawnsPerPass then
 				s = spawn(Core, w.id, startPoint(Core, w.sc, v, w.id), w.sc)
-				if s then s.pending = w.sc inScenes = inScenes + 1 end
+				if s then s.pending = w.sc inScenes = inScenes + 1 spawnedNow = spawnedNow + 1 end
 			end
 		elseif s.scene ~= w.sc.kind or s.place ~= (w.sc.place and w.sc.place.id) or (w.sc.kind == "rough" and s.asleep ~= w.sc.asleep) then
 			s.asleep = w.sc.asleep
@@ -577,8 +578,9 @@ function Life.update(Core, now, v)
 	for _, s in pairs(Life.spawned) do if s.scene == "passing" then keep[s.id] = true end end
 	local walkers, half = passers(Core, now, v, keep)
 	for _, w in ipairs(walkers) do
-		if Life.count >= Life.settings.max + (Life.settings.pedestrians or 0) then break end
+		if Life.count >= Life.settings.max + (Life.settings.pedestrians or 0) or spawnedNow >= Life.spawnsPerPass then break end
 		local s = spawn(Core, w.id, w.sc.from, w.sc)
+		spawnedNow = spawnedNow + 1
 		if s then
 			s.pending = w.sc
 			keep[w.id] = true

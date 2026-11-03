@@ -61,7 +61,7 @@ end
 -- game has finished setting it up (so a quest NPC is known to be one), and, if it's one of the game's civilians, taken out
 -- before V sees it. The sweep below is only for anyone already there.
 Crowd.arrived = {}
-function Crowd.now() return os.clock() end
+function Crowd.now() return require("modules/clock").now() end
 Crowd.ours = function() return {} end   -- set by init: tostring(entity hash) -> true
 
 function Crowd.init()
@@ -76,7 +76,8 @@ function Crowd.frame()
 	if #Crowd.arrived == 0 then return end
 	local now, list, later = Crowd.now(), {}, {}
 	for _, a in ipairs(Crowd.arrived) do
-		if now - a.at >= 0.5 then table.insert(list, a.npc) else table.insert(later, a) end
+		-- a few a frame, not all at once
+		if now - a.at >= 0.5 and #list < 3 then table.insert(list, a.npc) else table.insert(later, a) end
 	end
 	Crowd.arrived = later
 	if #list == 0 then return end

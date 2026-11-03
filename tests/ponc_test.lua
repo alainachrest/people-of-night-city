@@ -53,7 +53,7 @@ gameWorkspotSlidingBehaviour = { PlayAtResourcePosition = 0 }
 StaticEntitySpec = { new = function() return {} end }
 Game = {
 	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end, GetGame = function() return {} end } end,
-	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
+	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end, IsGamePaused = function() return gamePaused == true end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
 	["TSQ_NPC;"] = function() return {} end,
 	GetTransactionSystem = function() return {
@@ -266,9 +266,21 @@ for h = 6, 10 do
 end
 check("arriving at a building with no interior, they go in out of sight", vanished)
 
+-- paused: nothing happens at all (no spawning, removing or walk orders)
+do
+	local function snapshot() local n = 0 for _ in pairs(npcs) do n = n + 1 end return n, #walks end
+	local n0, w0 = snapshot()
+	gamePaused = true
+	clock = clock + 3600
+	tick(5)
+	local n1, w1 = snapshot()
+	gamePaused = false
+	check("nothing happens while the game is paused", n0 == n1 and w0 == w1)
+end
+
 -- off: everyone goes
 Life.settings.enabled = false
-tick(1.2)
+tick(3.5) -- (after a pause the mod waits 2 s before carrying on)
 check("switching off clears everyone", Life.count == 0)
 Life.settings.enabled = true
 

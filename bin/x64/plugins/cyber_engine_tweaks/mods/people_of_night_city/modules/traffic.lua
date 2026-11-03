@@ -11,6 +11,7 @@
 local World = require("modules/world")
 local Places = require("modules/places")
 local Population = require("modules/population")
+local Clock = require("modules/clock")
 
 local Traffic = {
 	settings = { enabled = true, cars = 15 },
@@ -130,7 +131,7 @@ local function start(Core, id, c, v, model)
 	local look = p.look or {}
 	local npc = World.spawnNPC(look.record or "Character.CorpoMan", at.x + 2.5, at.y, at.z, yaw, look.appearance)
 	if npc == nil then World.despawn(veh) return end
-	Traffic.cars[id] = { id = id, veh = veh, npc = npc, stage = "spawning", since = os.clock(), to = c.to, model = model }
+	Traffic.cars[id] = { id = id, veh = veh, npc = npc, stage = "spawning", since = Clock.now(), to = c.to, model = model }
 	Traffic.count = Traffic.count + 1
 	Traffic.driven[id] = c.leave
 	tally("set off")
@@ -141,13 +142,13 @@ end
 local function step(Core, car, v)
 	local vp = World.npcPos(car.veh)
 	if vp and dist(vp, v) > Traffic.despawn then remove(Core, car, "past") return end
-	local age = os.clock() - car.since
+	local age = Clock.now() - car.since
 	if car.stage == "spawning" then
 		if World.entity(car.veh) and World.entity(car.npc) then
 			World.setScannerName(car.npc, Core.people.get(car.id).name, "")
 			car.held = World.stowHeld(car.npc)
 			World.mount(car.npc, car.veh, "seat_front_left")
-			car.stage, car.since = "mounting", os.clock()
+			car.stage, car.since = "mounting", Clock.now()
 		elseif age > 10 then
 			note("car never appeared (" .. car.model .. ")")
 			tally("never appeared")
@@ -160,7 +161,7 @@ local function step(Core, car, v)
 			local more = World.stowHeld(car.npc)
 			if more then car.held = car.held or {} for _, h in ipairs(more) do table.insert(car.held, h) end end
 			World.drive(car.veh, goal.x, goal.y, goal.z, 6, 14)
-			car.stage, car.since = "driving", os.clock()
+			car.stage, car.since = "driving", Clock.now()
 		end
 	elseif car.stage == "driving" then
 		if World.npcState(car.npc) == "dead" then car.stage = "dead" return end
@@ -170,14 +171,14 @@ local function step(Core, car, v)
 			-- V is near: they get out and walk in (Life takes them from here)
 			if dist(vp, v) < Traffic.sight and Traffic.handOver then
 				World.unmount(car.npc, car.veh, "seat_front_left")
-				car.handedAt = os.clock()
+				car.handedAt = Clock.now()
 			end
 			return
 		end
 		if age > 300 and (vp == nil or dist(vp, v) > Traffic.sight) then remove(Core, car, "stuck") end
 	elseif car.stage == "parked" and car.handedAt and car.npc then
 		-- out of the car: from here they're Life's, the car stays parked
-		if os.clock() - car.handedAt > 2 or not World.hasDriver(car.veh) then
+		if Clock.now() - car.handedAt > 2 or not World.hasDriver(car.veh) then
 			World.restoreHeld(car.npc, car.held)
 			Traffic.handOver(car.id, car.npc, car.to)
 			car.npc = nil
@@ -200,12 +201,12 @@ function Traffic.update(Core, now, v, plan)
 	-- worked out again only when V has moved on or the half hour changes
 	local half = math.floor(now.seconds / 1800)
 	local o = Traffic.order
-	if o == nil or o.half ~= half or dist(o.at, v) > 150 or os.clock() - o.made > 30 then
+	if o == nil or o.half ~= half or dist(o.at, v) > 150 or Clock.now() - o.made > 30 then
 		local ids = Population.locals(v.x, v.y, Traffic.reach)
 		local key = {}
 		for _, id in ipairs(ids) do key[id] = Core.Rng.new("ponc", "drive", id, half):next() end
 		table.sort(ids, function(a, b) return key[a] < key[b] end)
-		o = { half = half, at = { x = v.x, y = v.y }, made = os.clock(), ids = ids, next = 1 }
+		o = { half = half, at = { x = v.x, y = v.y }, made = Clock.now(), ids = ids, next = 1 }
 		Traffic.order = o
 	end
 	-- a slice of them each pass, round and round
