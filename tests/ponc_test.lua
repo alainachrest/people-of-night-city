@@ -32,9 +32,10 @@ local system = {
 	Forget = function() end,
 	SetScannerName = function(_, id, name) if npcs[id] then npcs[id].scanName = name end end,
 }
+function GetSingleton() return { GetSystemRequestsHandler = function() return { IsPreGame = function() return false end } end } end
 local navmeshEverywhere = true
 Game = {
-	GetPlayer = function() return { GetWorldPosition = function() return V end } end,
+	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end } end,
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
 	GetDynamicEntitySystem = function() return {

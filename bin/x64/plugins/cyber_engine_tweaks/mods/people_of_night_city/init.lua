@@ -69,10 +69,11 @@ end
 -- Running
 ---------------------------------------------------------------------------
 
+-- In a loaded game (the same check CyberScript makes).
 local function inGame()
 	return World.try(function()
 		local p = Game.GetPlayer()
-		return p ~= nil and not Game.GetSystemRequestsHandler():IsGameInMenu()
+		return p ~= nil and p:IsAttached() and not GetSingleton("inkMenuScenario"):GetSystemRequestsHandler():IsPreGame()
 	end) == true
 end
 
@@ -83,7 +84,11 @@ local function update(dt)
 	PoNC.timer = 0
 	local Core = core()
 	if Core == nil then PoNC.status = CORE_MISSING return end
-	if Core.state() == nil or not inGame() then PoNC.status = "waiting for a save" return end
+	if Core.state() == nil then PoNC.status = "waiting for CyberScript to load the save" return end
+	if not inGame() then
+		PoNC.status = "waiting for the game to load" .. (World.lastError and (" (" .. World.lastError .. ")") or "")
+		return
+	end
 	if #Places.list == 0 then
 		local n = Places.load()
 		log(n .. " homes and workplaces")
