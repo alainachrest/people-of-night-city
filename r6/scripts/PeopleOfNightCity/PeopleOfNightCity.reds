@@ -189,16 +189,18 @@ public class PoNCSystem extends ScriptableSystem {
 
     // A point on the navmesh (for people) within `radius` of a point; W is 0
     // if there's none.
+    // (The game's nearest-navmesh-below query, started a little above the
+    // point; a failed query gives a point far off, which is turned down.)
     public func NavPoint(x: Float, y: Float, z: Float, radius: Float) -> Vector4 {
-        let nav = GameInstance.GetAINavigationSystem(GetGameInstance());
-        if !IsDefined(nav) {
+        let from = Vector4(x, y, z + 1.5, 1.0);
+        let p = GameInstance.GetNavigationSystem(GetGameInstance())
+            .GetNearestNavmeshPointBelowOnlyHumanNavmesh(from, radius, 5);
+        let dx = p.X - x;
+        let dy = p.Y - y;
+        if dx * dx + dy * dy > (radius + 1.0) * (radius + 1.0) || AbsF(p.Z - z) > radius + 3.0 {
             return Vector4(0.0, 0.0, 0.0, 0.0);
         }
-        let res = nav.FindPointInSphereOnlyHumanNavmesh(Vector4(x, y, z, 1.0), radius, NavGenAgentSize.Human, false);
-        if Equals(res.status, worldNavigationRequestStatus.OK) {
-            return Vector4(res.point.X, res.point.Y, res.point.Z, 1.0);
-        }
-        return Vector4(0.0, 0.0, 0.0, 0.0);
+        return Vector4(p.X, p.Y, p.Z, 1.0);
     }
 
     // Things in hand ------------------------------------------------------
