@@ -22,7 +22,16 @@ local Traffic = {
 	minTrip = 150,    -- shorter trips are walked
 	sight = 80,       -- a car that has got where it's going stays parked while V is this close
 	log = nil,
+	tally = {},       -- what happened when cars were wanted (for the log)
 }
+
+local function tally(k) Traffic.tally[k] = (Traffic.tally[k] or 0) + 1 end
+function Traffic.summary()
+	local t = {}
+	for k, n in pairs(Traffic.tally) do t[#t + 1] = k .. " " .. n end
+	table.sort(t)
+	return #t > 0 and table.concat(t, ", ") or "nobody driving yet"
+end
 
 -- How likely someone is to have a car, by way of life.
 local CAR = { corpo = 0.8, rich = 1.0, worker = 0.45, vendor = 0.55, young = 0.35, nightlife = 0.5, medical = 0.6, nomad = 1.0, street = 0 }
@@ -109,17 +118,18 @@ end
 
 local function start(Core, id, c, v, model)
 	local at = entry(Core, id, c, v)
-	if at == nil then return end
+	if at == nil then tally("no road near V") return end
 	local p = Core.people.get(id)
 	local yaw = math.deg(math.atan2(c.to.y - at.y, c.to.x - at.x)) - 90
 	local veh = World.spawnVehicle(model, at.x, at.y, at.z + 0.3, yaw)
-	if veh == nil then return end
+	if veh == nil then tally("car spawn failed") return end
 	local look = p.look or {}
 	local npc = World.spawnNPC(look.record or "Character.CorpoMan", at.x + 2.5, at.y, at.z, yaw, look.appearance)
 	if npc == nil then World.despawn(veh) return end
 	Traffic.cars[id] = { id = id, veh = veh, npc = npc, stage = "spawning", since = os.clock(), to = c.to, model = model }
 	Traffic.count = Traffic.count + 1
 	Traffic.driven[id] = c.leave
+	tally("set off")
 	Core.people.bind(id, npc)
 	note(p.name .. " driving to " .. Places.name(c.to))
 end
@@ -136,6 +146,7 @@ local function step(Core, car, v)
 			car.stage, car.since = "mounting", os.clock()
 		elseif age > 10 then
 			note("car never appeared (" .. car.model .. ")")
+			tally("never appeared")
 			remove(Core, car, "never spawned")
 		end
 	elseif car.stage == "mounting" then
@@ -202,7 +213,9 @@ function Traffic.update(Core, now, v, plan)
 		looked = looked + 1
 		if Traffic.cars[id] == nil and not (Traffic.busy and Traffic.busy(id)) then
 			local c = plan(id)
-			if Traffic.driving(Core, id, c, now.seconds) and Traffic.driven[id] ~= c.leave then
+			local driving = Traffic.driving(Core, id, c, now.seconds)
+			if driving then tally("drivers seen") end
+			if driving and Traffic.driven[id] ~= c.leave then
 				local p = Core.people.get(id)
 				local model = p and p.status == "alive" and Traffic.carOf(Core, p)
 				if model then start(Core, id, c, v, model) started = started + 1 end

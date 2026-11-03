@@ -158,8 +158,8 @@ local function update(dt)
 		for _, sp in pairs(Life.spawned) do kinds[sp.scene] = (kinds[sp.scene] or 0) + 1 end
 		local t = {}
 		for k, n in pairs(kinds) do t[#t + 1] = k .. " " .. n end
-		log(string.format("people %d, out near V %d (%s), cars %d, game NPCs removed %d, spots used %d",
-			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Crowd.removed, Life.usedSpots))
+		log(string.format("people %d, out near V %d (%s), cars %d (%s), game NPCs removed %d, spots used %d",
+			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Traffic.summary(), Crowd.removed, Life.usedSpots))
 	end
 end
 
@@ -224,9 +224,36 @@ local function draw()
 	ImGui.Text(string.format("Game NPCs removed: %d   Kept nearby: %s", Crowd.removed, #kept > 0 and table.concat(kept, ", ") or "none"))
 	if ImGui.Button("Clear everyone near me") and Core then Life.clear(Core) Traffic.clear(Core) end
 	if Core and Core.state() and ImGui.CollapsingHeader("People near you") then
-		local lines = nearbyLines(Core)
-		for i = 1, math.min(#lines, 40) do ImGui.Text(lines[i].text) end
-		if #lines == 0 then ImGui.Text("Nobody lives or works near here.") end
+		-- everyone of ours who's actually here, nearest first: the names you
+		-- get when you scan them
+		local v = World.playerPos()
+		local here = {}
+		local DOING = { leaving = "leaving", arriving = "arriving", inside = "inside", around = "out and about",
+			rough = "sleeping rough", passing = "walking past", adopted = "just parked" }
+		local function add(id, ent, doing)
+			local p = Core.people.get(id)
+			local pos = World.npcPos(ent)
+			if p and pos and v then
+				local d = math.sqrt((pos.x - v.x) ^ 2 + (pos.y - v.y) ^ 2)
+				table.insert(here, { d = d, text = string.format("%s (%s, %s) - %s, %dm", p.name, p.job or "?",
+					p.lifestyle or "?", doing, math.floor(d)) })
+			end
+		end
+		for id, sp in pairs(Life.spawned) do
+			local doing = DOING[sp.scene] or sp.scene or "?"
+			if sp.task and sp.task.using and sp.task.spot then doing = doing .. ", " .. sp.task.spot.kind .. "ing" end
+			add(id, sp.ent, doing)
+		end
+		for id, car in pairs(Traffic.cars) do if car.npc then add(id, car.npc, "driving") end end
+		table.sort(here, function(a, b) return a.d < b.d end)
+		ImGui.Text(#here .. " of our people here now:")
+		for i = 1, math.min(#here, 60) do ImGui.Text(here[i].text) end
+		if ImGui.TreeNode("Who lives or works near here") then
+			local lines = nearbyLines(Core)
+			for i = 1, math.min(#lines, 40) do ImGui.Text(lines[i].text) end
+			if #lines == 0 then ImGui.Text("Nobody lives or works near here.") end
+			ImGui.TreePop()
+		end
 	end
 	if ImGui.CollapsingHeader("Places near you") then
 		local v = World.playerPos()
