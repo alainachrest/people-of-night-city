@@ -131,6 +131,7 @@ local function step(Core, car, v)
 	if car.stage == "spawning" then
 		if World.entity(car.veh) and World.entity(car.npc) then
 			World.setScannerName(car.npc, Core.people.get(car.id).name, "")
+			car.held = World.stowHeld(car.npc)
 			World.mount(car.npc, car.veh, "seat_front_left")
 			car.stage, car.since = "mounting", os.clock()
 		elseif age > 10 then
@@ -140,6 +141,9 @@ local function step(Core, car, v)
 	elseif car.stage == "mounting" then
 		if World.hasDriver(car.veh) or age > 3 then
 			local goal = World.roadPointNear(car.to.x, car.to.y, car.to.z, 40) or car.to
+			-- (put away anything they were given since, too)
+			local more = World.stowHeld(car.npc)
+			if more then car.held = car.held or {} for _, h in ipairs(more) do table.insert(car.held, h) end end
 			World.drive(car.veh, goal.x, goal.y, goal.z, 6, 14)
 			car.stage, car.since = "driving", os.clock()
 		end
@@ -159,6 +163,7 @@ local function step(Core, car, v)
 	elseif car.stage == "parked" and car.handedAt and car.npc then
 		-- out of the car: from here they're Life's, the car stays parked
 		if os.clock() - car.handedAt > 2 or not World.hasDriver(car.veh) then
+			World.restoreHeld(car.npc, car.held)
 			Traffic.handOver(car.id, car.npc, car.to)
 			car.npc = nil
 		end

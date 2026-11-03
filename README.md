@@ -60,6 +60,11 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     homeless people go through bins, warm their hands, beg, and at night
     sleep on the ground or a bench. One person per spot. A spot whose
     animations don't fit someone's body isn't used for them again;
+  - **things in hand**: 8 in 10 people carry something their body has the walk
+    for: a phone or tablet, a bag, a can or bottle, a cigarette, and an
+    umbrella when it rains (in rain, fewer other things; in a downpour, only
+    umbrellas). The same person carries the same thing in the same weather.
+    They put it away to sit, lean or drive, and take it out again after;
   - **the game's other people** (standing, sitting, leaning about) are removed
     within 150 m of V, so the only civilians around are ours. Kept: anyone in a
     quest, vendors, police, gangs and other non-civilians, companions, NPCs other

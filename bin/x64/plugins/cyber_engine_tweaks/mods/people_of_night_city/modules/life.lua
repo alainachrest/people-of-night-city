@@ -284,6 +284,7 @@ local function leaveSpot(s)
 		if t.using then World.leaveSpot(s.ent) end
 		World.despawnSpot(t.device)
 	end
+	if t.held then World.restoreHeld(s.ent, t.held) t.held = nil end
 	Spots.release(t.spot, s.id)
 	t.spot, t.device, t.using = nil, nil, false
 end
@@ -336,6 +337,7 @@ end
 function Life.adopt(Core, id, ent, place)
 	if Life.spawned[id] then return end
 	local s = { id = id, ent = ent, scene = "adopted", born = Life.now(), named = true }
+	World.giveCarryItem(ent, Core.Rng.hash("ponc:carry:" .. id) % 100000)
 	Life.spawned[id] = s
 	Life.count = Life.count + 1
 	local pos = World.npcPos(ent) or place
@@ -351,6 +353,10 @@ local function settle(Core, s)
 	local p = Core.people.get(s.id)
 	if p == nil then return end
 	World.setScannerName(s.ent, p.name, faction(Core, p))
+	-- something in hand (the same thing for the same person, in the same weather)
+	if not (s.task and s.task.using) then
+		World.giveCarryItem(s.ent, Core.Rng.hash("ponc:carry:" .. s.id) % 100000)
+	end
 	if p.look and p.look.appearance == nil then
 		local app = World.appearance(s.ent)
 		if app then
@@ -385,6 +391,7 @@ local function step(Core, s, v)
 			end
 		elseif not t.using then
 			if World.entity(t.device) and clock - t.placed > 0.5 then
+				t.held = World.stowHeld(s.ent) or t.held
 				if World.useSpot(t.device, s.ent) then
 					t.using, t.started = true, clock
 					Life.usedSpots = Life.usedSpots + 1

@@ -26,11 +26,14 @@ DynamicEntitySpec = { new = function() return {} end }
 Vector4 = { new = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end }
 EulerAngles = { new = function() return { ToQuat = function() return {} end } end }
 Enum = { new = function(a, b) return b end }
+local inHand = {}  -- npc id -> what they carry
+local given = 0
 local system = {
 	WalkNPC = function(_, id, x, y, z, run) if npcs[id] then table.insert(walks, { id = id, x = x, y = y, run = run }) npcs[id].target = { x = x, y = y, z = z } return true end return false end,
 	MoveState = function(_, id) local n = npcs[id] if n and n.target and math.abs(n.pos.x - n.target.x) + math.abs(n.pos.y - n.target.y) < 0.5 then return 5 end return 2 end,
 	Forget = function() end,
 	SetScannerName = function(_, id, name) if npcs[id] then npcs[id].scanName = name end end,
+	GiveCarryItem = function(_, id, pick) if npcs[id] and pick % 10 < 8 then inHand[id] = "Items.locomotion_crowd_cellphone" given = given + 1 return inHand[id] end return "" end,
 }
 function GetSingleton() return { GetSystemRequestsHandler = function() return { IsPreGame = function() return false end } end } end
 local mounted, drives = {}, 0
@@ -39,6 +42,7 @@ MountEventData = { new = function() return {} end }
 VehicleComponent = { HasActiveDriver = function(_, veh, id) return mounted[id] ~= nil end }
 Vector4.Vector4To3 = function(v) return v end
 local devices, playing, observers, assembleQueue = {}, {}, {}, {}
+TweakDBID = { new = function(s) return s end }
 function Observe(cls, fn, cb) observers[cls .. "." .. fn] = cb end
 ResRef = { FromString = function(p) return p end }
 Vector3 = { new = function() return {} end }
@@ -50,6 +54,10 @@ Game = {
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
 	["TSQ_NPC;"] = function() return {} end,
+	GetTransactionSystem = function() return {
+		GetItemInSlot = function(_, npc, slot) local it = inHand[npc.id] if it and slot == "AttachmentSlots.WeaponRight" then return { GetItemID = function() return it end } end end,
+		RemoveItemFromSlot = function(_, npc, slot) inHand[npc.id] = nil return true end,
+		AddItemToSlot = function(_, npc, slot, item) inHand[npc.id] = item return true end } end,
 	GetTargetingSystem = function() return { GetTargetParts = function() return false, nil end } end,
 	GetStaticEntitySystem = function() return {
 		SpawnEntity = function(_, spec) nextId = nextId + 1 local id = { hash = nextId }
@@ -177,6 +185,10 @@ do
 	for _ in pairs(playing) do using = using + 1 end
 	print("using spots now", using, "spots in use", (function() local n = 0 for _ in pairs(require("modules/spots").taken) do n = n + 1 end return n end)())
 	check("people sit, lean and use things at the game's spots", Life.usedSpots > 0)
+	local sittingWithItem = 0
+	for npc in pairs(playing) do if inHand[npc] then sittingWithItem = sittingWithItem + 1 end end
+	check("people carry things (phone, bag, can... umbrella in the rain)", given > 0)
+	check("nobody sits or leans with something in hand", using > 0 and sittingWithItem == 0)
 	check("each spot's workspot is set on its device", (function() for _, d in pairs(devices) do return d.comp.workspotResource ~= nil end return true end)())
 end
 

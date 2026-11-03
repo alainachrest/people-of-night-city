@@ -262,6 +262,46 @@ function World.inSpot(npcId)
 	end) == true
 end
 
+-- Puts something in an NPC's hand (phone, tablet, bag, can, cigarette, or an
+-- umbrella in the rain): PoNCSystem.GiveCarryItem. `pick` picks which.
+function World.giveCarryItem(npcId, pick)
+	return try(function() return system():GiveCarryItem(npcId, pick) end)
+end
+
+-- What an NPC holds in their hands: put away while they sit, lean or drive,
+-- and back in hand after. Returns what was put away, for World.restoreHeld.
+local HANDS = { "AttachmentSlots.WeaponRight", "AttachmentSlots.WeaponLeft" }
+
+function World.stowHeld(npcId)
+	return try(function()
+		local npc = Game.FindEntityByID(npcId)
+		if npc == nil then return nil end
+		local ts = Game.GetTransactionSystem()
+		local held = {}
+		for _, slot in ipairs(HANDS) do
+			local sid = TweakDBID.new(slot)
+			local obj = ts:GetItemInSlot(npc, sid)
+			if obj then
+				local item = obj:GetItemID()
+				if ts:RemoveItemFromSlot(npc, sid) then table.insert(held, { slot = slot, item = item }) end
+			end
+		end
+		return #held > 0 and held or nil
+	end)
+end
+
+function World.restoreHeld(npcId, held)
+	if held == nil then return end
+	try(function()
+		local npc = Game.FindEntityByID(npcId)
+		if npc == nil then return end
+		local ts = Game.GetTransactionSystem()
+		for _, h in ipairs(held) do
+			ts:AddItemToSlot(npc, TweakDBID.new(h.slot), h.item, true)
+		end
+	end)
+end
+
 -- Gets up / stops what they were doing at the spot.
 function World.leaveSpot(npcId)
 	try(function()
