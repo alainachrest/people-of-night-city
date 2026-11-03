@@ -97,6 +97,27 @@ function World.setScannerName(id, name, faction)
 	try(function() system():SetScannerName(id, name, faction or "") end)
 end
 
+-- Every NPC within r metres of V (the game's and anyone else's).
+function World.npcsNear(r)
+	return try(function()
+		local query = Game["TSQ_NPC;"]()
+		query.maxDistance = r
+		local ok, parts = Game.GetTargetingSystem():GetTargetParts(Game.GetPlayer(), query)
+		local out = {}
+		if not ok or parts == nil then return out end
+		for _, part in ipairs(parts) do
+			local e = part:GetComponent(part):GetEntity()
+			if e and e:IsNPC() then table.insert(out, e) end
+		end
+		return out
+	end) or {}
+end
+
+-- Takes one of the game's NPCs out of the world.
+function World.remove(npc)
+	return try(function() npc:Dispose() return true end) == true
+end
+
 -- Navmesh ------------------------------------------------------------------------
 
 local function nav()

@@ -65,6 +65,7 @@ local function arrive() for _, n in pairs(npcs) do if n.target then n.pos = { x 
 local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
+local World = require("modules/world")
 tick(1.2)
 check("places loaded", #Places.list > 8000)
 
@@ -202,6 +203,30 @@ if s then
 	check("the dead don't come back", not again)
 else
 	check("someone to kill", false)
+end
+
+-- the game's own people near V
+do
+	local Crowd = require("modules/crowd")
+	local function npc(h, t)
+		t = t or {}
+		return { GetEntityID = function() return { hash = h } end, IsNPC = function() return true end,
+			IsDead = function() return false end, IsQuest = function() return t.quest == true end,
+			IsCrowd = function() return t.crowd == true end, IsCharacterCivilian = function() return t.civ == true end,
+			IsCharacterGanger = function() return t.gang == true end, IsCharacterPolice = function() return false end,
+			IsPrevention = function() return false end, IsInCombat = function() return false end,
+			IsVendor = function() return t.vendor == true end, GetRecordID = function() return "x" end,
+			Dispose = function() t.gone = true end, t = t }
+	end
+	local list = { npc(1, { crowd = true, civ = true }), npc(2, { civ = true }), npc(3, { civ = true, quest = true }),
+		npc(4, { gang = true }), npc(5, { civ = true, vendor = true }), npc(6, { civ = true }) }
+	World.npcsNear = function() return list end
+	TweakDBInterface = { GetCharacterRecord = function() return { Affiliation = function() return { GetID = function() return "Factions.Gang" end } end } end }
+	Crowd.timer = 99
+	Crowd.update(0, { [6] = true })
+	local w = list
+	check("the game's crowd and civilians near V are removed", w[1].t.gone and w[2].t.gone)
+	check("quest people, gangs, vendors and ours are kept", not w[3].t.gone and not w[4].t.gone and not w[5].t.gone and not w[6].t.gone)
 end
 
 print(string.format("people %d, homes %d", Population.count, (function() local n = 0 for _ in pairs(Population.homes) do n = n + 1 end return n end)()))

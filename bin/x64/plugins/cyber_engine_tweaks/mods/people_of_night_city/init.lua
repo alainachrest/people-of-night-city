@@ -24,6 +24,7 @@ local World = require("modules/world")
 local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
+local Crowd = require("modules/crowd")
 
 local CORE_MISSING = "People of Night City needs CyberScript with the shared core (API 2): the api-hooks-and-2.5 build of CyberScript."
 local SETTINGS_FILE = "settings.txt"
@@ -48,7 +49,8 @@ local function loadSettings()
 	if not f then return end
 	for line in f:lines() do
 		local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
-		if k and Life.settings[k] ~= nil then
+		if k == "replaceGamePeople" then Crowd.settings.replace = v == "true"
+		elseif k and Life.settings[k] ~= nil then
 			if type(Life.settings[k]) == "boolean" then Life.settings[k] = v == "true"
 			else Life.settings[k] = tonumber(v) or Life.settings[k] end
 		end
@@ -62,6 +64,7 @@ local function saveSettings()
 	for _, k in ipairs({ "enabled", "radius", "despawn", "max", "pedestrians" }) do
 		f:write(k .. " = " .. tostring(Life.settings[k]) .. "\n")
 	end
+	f:write("replaceGamePeople = " .. tostring(Crowd.settings.replace) .. "\n")
 	f:close()
 end
 
@@ -112,6 +115,10 @@ local function update(dt)
 		log(PoNC.status)
 		return
 	end
+	local ours = {}
+	for _, sp in pairs(Life.spawned) do if sp.ent and sp.ent.hash then ours[sp.ent.hash] = true end end
+	local ok2, err2 = pcall(Crowd.update, PoNC.crowdDt or 1.0, ours)
+	if not ok2 then log("crowd: " .. tostring(err2)) end
 	PoNC.status = "running"
 	PoNC.ready = true
 end
@@ -162,6 +169,12 @@ local function draw()
 	if changed then Life.settings.max = r saveSettings() end
 	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 40)
 	if changed then Life.settings.pedestrians = r saveSettings() end
+	Crowd.settings.replace, changed = ImGui.Checkbox("Replace the game's people with ours", Crowd.settings.replace)
+	if changed then saveSettings() end
+	local kept = {}
+	for why, n in pairs(Crowd.kept) do table.insert(kept, why .. " " .. n) end
+	table.sort(kept)
+	ImGui.Text(string.format("Game NPCs removed: %d   Kept nearby: %s", Crowd.removed, #kept > 0 and table.concat(kept, ", ") or "none"))
 	if ImGui.Button("Clear everyone near me") and Core then Life.clear(Core) end
 	if Core and Core.state() and ImGui.CollapsingHeader("People near you") then
 		local lines = nearbyLines(Core)

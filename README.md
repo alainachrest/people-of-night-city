@@ -41,6 +41,11 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     who live within 600 m of V and are out (on errands, on their way somewhere)
     walk past V (20 at once, adjustable). Each walks past at most once every
     half hour;
+  - **the game's other people** (standing, sitting, leaning about) are removed
+    within 150 m of V, so the only civilians around are ours. Kept: anyone in a
+    quest, vendors, police, gangs and other non-civilians, companions, NPCs other
+    mods spawned, and anyone in combat. "Replace the game's people with ours" in
+    the window turns this off;
   - asleep, or anywhere V isn't, they're only in the numbers.
 - Each person keeps their look (the appearance they first had), scans as
   themselves (name and any open affiliation), and is bound to their NPC in the
