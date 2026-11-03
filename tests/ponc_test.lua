@@ -299,7 +299,7 @@ do
 	World.npcsNear = function() return list end
 	TweakDBInterface = { GetCharacterRecord = function() return { Affiliation = function() return { GetID = function() return "Factions.Gang" end } end } end }
 	Crowd.timer = 99
-	Crowd.update(0, { [6] = true })
+	Crowd.update(0, { [tostring(6)] = true })
 	local w = list
 	check("the game's crowd and civilians near V are removed", w[1].t.gone and w[2].t.gone)
 	check("quest people, gangs, vendors and ours are kept", not w[3].t.gone and not w[4].t.gone and not w[5].t.gone and not w[6].t.gone)

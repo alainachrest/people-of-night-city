@@ -196,6 +196,10 @@ end
 
 local leaveSpotLater
 local function despawn(Core, s, why)
+	if why ~= "out of range" and why ~= "went in" and why ~= "scene over" then
+		local p = Core.people.get(s.id)
+		note((p and p.name or s.id) .. " gone: " .. tostring(why))
+	end
 	if leaveSpotLater then leaveSpotLater(s) end
 	World.despawn(s.ent)
 	pcall(function() Core.people.unbind(s.id) end)
@@ -536,7 +540,13 @@ function Life.update(Core, now, v)
 		end
 	end
 	for id, s in pairs(Life.spawned) do
-		if s.pending and World.entity(s.ent) then
+		-- never turned up, or taken out of the world by something else: let them go
+		if World.entity(s.ent) then
+			s.seen = true
+		elseif (s.seen or Life.now() - (s.born or 0) > 10) and Life.spawned[id] then
+			despawn(Core, s, s.seen and "gone from the world" or "never appeared")
+		end
+		if Life.spawned[id] and s.pending and World.entity(s.ent) then
 			local sc = s.pending
 			s.pending = nil
 			direct(Core, s, sc, v)

@@ -19,7 +19,8 @@ local Crowd = {
 }
 
 local function hash(ent)
-	local ok, h = pcall(function() return ent:GetEntityID().hash end)
+	-- as a string: the game's 64-bit ids don't make the same table key twice
+	local ok, h = pcall(function() return tostring(ent:GetEntityID().hash) end)
 	return ok and h or nil
 end
 
@@ -54,7 +55,7 @@ function Crowd.keep(npc, ours)
 	return nil
 end
 
--- One sweep near V. `ours`: entity hash -> true for the people this mod spawned.
+-- One sweep near V. `ours`: tostring(entity hash) -> true for the people this mod spawned.
 function Crowd.update(dt, ours)
 	if not Crowd.settings.replace then return end
 	Crowd.timer = Crowd.timer + dt

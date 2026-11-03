@@ -133,7 +133,10 @@ local function step(Core, car, v)
 			World.setScannerName(car.npc, Core.people.get(car.id).name, "")
 			World.mount(car.npc, car.veh, "seat_front_left")
 			car.stage, car.since = "mounting", os.clock()
-		elseif age > 10 then remove(Core, car, "never spawned") end
+		elseif age > 10 then
+			note("car never appeared (" .. car.model .. ")")
+			remove(Core, car, "never spawned")
+		end
 	elseif car.stage == "mounting" then
 		if World.hasDriver(car.veh) or age > 3 then
 			local goal = World.roadPointNear(car.to.x, car.to.y, car.to.z, 40) or car.to

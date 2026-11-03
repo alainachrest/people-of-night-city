@@ -129,12 +129,27 @@ local function update(dt)
 	local ok3, err3 = pcall(Traffic.update, Core, now, v, function(id) return Life.plan(Core, id, now) end)
 	if not ok3 then log("traffic: " .. tostring(err3)) end
 	local ours = {}
-	for _, sp in pairs(Life.spawned) do if sp.ent and sp.ent.hash then ours[sp.ent.hash] = true end end
-	for _, car in pairs(Traffic.cars) do if car.npc and car.npc.hash then ours[car.npc.hash] = true end end
+	for _, sp in pairs(Life.spawned) do if sp.ent then ours[tostring(sp.ent.hash)] = true end end
+	for _, car in pairs(Traffic.cars) do if car.npc then ours[tostring(car.npc.hash)] = true end end
 	local ok2, err2 = pcall(Crowd.update, PoNC.crowdDt or 1.0, ours)
 	if not ok2 then log("crowd: " .. tostring(err2)) end
 	PoNC.status = "running"
 	PoNC.ready = true
+	-- what's going on, in the log now and then (and any game call that failed)
+	PoNC.diagTimer = (PoNC.diagTimer or 0) + 1
+	if World.lastError and World.lastError ~= PoNC.lastLoggedError then
+		PoNC.lastLoggedError = World.lastError
+		log("game call failed: " .. World.lastError)
+	end
+	if PoNC.diagTimer >= 30 then
+		PoNC.diagTimer = 0
+		local kinds = {}
+		for _, sp in pairs(Life.spawned) do kinds[sp.scene] = (kinds[sp.scene] or 0) + 1 end
+		local t = {}
+		for k, n in pairs(kinds) do t[#t + 1] = k .. " " .. n end
+		log(string.format("people %d, out near V %d (%s), cars %d, game NPCs removed %d, spots used %d",
+			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Crowd.removed, Life.usedSpots))
+	end
 end
 
 ---------------------------------------------------------------------------
