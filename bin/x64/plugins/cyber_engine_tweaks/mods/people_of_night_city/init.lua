@@ -26,6 +26,7 @@ local Population = require("modules/population")
 local Life = require("modules/life")
 local Crowd = require("modules/crowd")
 local Traffic = require("modules/traffic")
+local Spots = require("modules/spots")
 Traffic.log = Life.note
 Traffic.busy = function(id) return Life.spawned[id] ~= nil end
 Traffic.handOver = function(id, ent, place) if PoNC.core then Life.adopt(PoNC.core, id, ent, place) end end
@@ -67,7 +68,7 @@ end
 local function saveSettings()
 	local f = io.open(SETTINGS_FILE, "w")
 	if not f then return end
-	for _, k in ipairs({ "enabled", "radius", "despawn", "max", "pedestrians" }) do
+	for _, k in ipairs({ "enabled", "radius", "despawn", "max", "pedestrians", "useSpots" }) do
 		f:write(k .. " = " .. tostring(Life.settings[k]) .. "\n")
 	end
 	f:write("replaceGamePeople = " .. tostring(Crowd.settings.replace) .. "\n")
@@ -103,6 +104,7 @@ local function update(dt)
 	if #Places.list == 0 then
 		local n = Places.load()
 		log(n .. " homes and workplaces")
+		log(Spots.load() .. " spots to sit, lean and do things at")
 	end
 	local v = World.playerPos()
 	if v == nil then return end
@@ -181,6 +183,8 @@ local function draw()
 	if changed then Life.settings.max = r saveSettings() end
 	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 40)
 	if changed then Life.settings.pedestrians = r saveSettings() end
+	Life.settings.useSpots, changed = ImGui.Checkbox("Sit, lean and use things (the game's spots)", Life.settings.useSpots)
+	if changed then saveSettings() end
 	Traffic.settings.enabled, changed = ImGui.Checkbox("Our people driving (traffic)", Traffic.settings.enabled)
 	if changed then saveSettings() end
 	r, changed = ImGui.SliderInt("Cars on the road", Traffic.settings.cars or 0, 0, 40)
@@ -221,6 +225,7 @@ end
 
 registerForEvent("onInit", function()
 	loadSettings()
+	World.init()
 	log("v" .. PoNC.version .. " loaded")
 end)
 registerForEvent("onUpdate", function(dt) update(dt) end)

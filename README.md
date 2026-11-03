@@ -51,6 +51,15 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     Everyone has the same car every time. When they get there and V is near,
     they get out and walk in; the car stays parked. Up to 15 cars at once
     (adjustable);
+  - **sitting, leaning, doing things**: people use the same spots the game's
+    own NPCs use, with the same animations: 63,882 of them, from the game files
+    (benches, chairs, bar stools, couches, walls and rails to lean on, smoking,
+    phones, drinks, vending machines, food stalls). Someone with time near home
+    often goes and sits or leans somewhere; someone at a place with an
+    interior sits at the bar or a table (or works, if it's their workplace);
+    homeless people go through bins, warm their hands, beg, and at night
+    sleep on the ground or a bench. One person per spot. A spot whose
+    animations don't fit someone's body isn't used for them again;
   - **the game's other people** (standing, sitting, leaning about) are removed
     within 150 m of V, so the only civilians around are ours. Kept: anyone in a
     quest, vendors, police, gangs and other non-civilians, companions, NPCs other

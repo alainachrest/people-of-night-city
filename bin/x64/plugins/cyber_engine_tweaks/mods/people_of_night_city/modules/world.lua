@@ -199,6 +199,77 @@ function World.remove(npc)
 	return try(function() npc:Dispose() return true end) == true
 end
 
+-- Workspots ----------------------------------------------------------------------
+-- A spot is used through a workspot device (an entity with only a workspot
+-- component, archive/pc/mod/PeopleOfNightCity.archive) put where the spot is,
+-- given the spot's workspot resource as it's assembled.
+
+World.DEVICE = "people_of_night_city\\workspot_device.ent"
+World.assembling = {}  -- entity hash -> workspot path
+
+-- Hooks the entity builder (once, at start): fills in our devices' workspots.
+function World.init()
+	pcall(function()
+		Observe("EntityBuilder", "OnAssemble", function(_, event)
+			local ok, ent = pcall(function() return event:GetEntity() end)
+			if not ok or ent == nil then return end
+			local h = tostring(ent:GetEntityID().hash)
+			local path = World.assembling[h]
+			if path == nil then return end
+			World.assembling[h] = nil
+			try(function()
+				local c = ent:FindComponentByName("workspot")
+				c.workspotResource = ResRef.FromString(path)
+			end)
+		end)
+	end)
+end
+
+function World.spawnSpot(path, x, y, z, yaw)
+	return try(function()
+		local spec = StaticEntitySpec.new()
+		spec.templatePath = World.DEVICE
+		spec.position = Vector4.new(x, y, z, 1.0)
+		spec.orientation = EulerAngles.new(0, 0, yaw or 0):ToQuat()
+		spec.attached = true
+		local id = Game.GetStaticEntitySystem():SpawnEntity(spec)
+		if id then World.assembling[tostring(id.hash)] = path end
+		return id
+	end)
+end
+
+function World.despawnSpot(id)
+	if id == nil then return end
+	World.assembling[tostring(id.hash)] = nil
+	try(function() Game.GetStaticEntitySystem():DespawnEntity(id) end)
+end
+
+-- Starts the spot's workspot on an NPC (it sits, leans, ...). true if started.
+function World.useSpot(deviceId, npcId)
+	return try(function()
+		local dev, npc = Game.FindEntityByID(deviceId), Game.FindEntityByID(npcId)
+		if dev == nil or npc == nil then return false end
+		Game.GetWorkspotSystem():PlayInDeviceSimple(dev, npc, false, "workspot", "", "", 0,
+			gameWorkspotSlidingBehaviour.PlayAtResourcePosition)
+		return true
+	end) == true
+end
+
+function World.inSpot(npcId)
+	return try(function()
+		local npc = Game.FindEntityByID(npcId)
+		return npc ~= nil and Game.GetWorkspotSystem():IsActorInWorkspot(npc)
+	end) == true
+end
+
+-- Gets up / stops what they were doing at the spot.
+function World.leaveSpot(npcId)
+	try(function()
+		local npc = Game.FindEntityByID(npcId)
+		if npc then Game.GetWorkspotSystem():SendFastExitSignal(npc, Vector3.new(0, 0, 0), false, false, true) end
+	end)
+end
+
 -- Navmesh ------------------------------------------------------------------------
 
 local function nav()

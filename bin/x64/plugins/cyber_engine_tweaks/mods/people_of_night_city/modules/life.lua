@@ -19,18 +19,23 @@ local World = require("modules/world")
 local Places = require("modules/places")
 local Population = require("modules/population")
 local Traffic = require("modules/traffic")
+local Spots = require("modules/spots")
 
 local Life = {
 	spawned = {},       -- person id -> { ent, task, ... }
 	count = 0,
 	plans = {},         -- person id -> cached plan for one game hour
-	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20 },
+	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20, useSpots = true },
+	usedSpots = 0,      -- times someone has sat down, leant, ... (for the window)
 	reach = 600,        -- people living this close to V can be out walking V's streets
 	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
 	speed = 9,          -- metres per game second travelling between places (by car, train)
 	log = {},
 }
+
+-- Real time in seconds (tests set their own).
+function Life.now() return os.clock() end
 
 local function note(text)
 	table.insert(Life.log, text)
@@ -181,7 +186,7 @@ local function spawn(Core, id, at, sc)
 	local pos = World.navPointNear(at.x, at.y, at.z, 4.0) or at
 	local ent = World.spawnNPC(look.record or "Character.CorpoMan", pos.x, pos.y, pos.z, at.yaw or 0, look.appearance)
 	if ent == nil then return nil end
-	local s = { id = id, ent = ent, scene = sc.kind, place = sc.place and sc.place.id, born = os.clock(), named = false }
+	local s = { id = id, ent = ent, scene = sc.kind, place = sc.place and sc.place.id, born = Life.now(), named = false }
 	Life.spawned[id] = s
 	Life.count = Life.count + 1
 	Core.people.bind(id, ent)
@@ -189,7 +194,9 @@ local function spawn(Core, id, at, sc)
 	return s
 end
 
+local leaveSpotLater
 local function despawn(Core, s, why)
+	if leaveSpotLater then leaveSpotLater(s) end
 	World.despawn(s.ent)
 	pcall(function() Core.people.unbind(s.id) end)
 	Life.spawned[s.id] = nil
@@ -227,7 +234,7 @@ local function startPoint(Core, sc, v, id)
 	end
 	if sc.kind == "passing" then return sc.from end
 	if sc.kind == "around" then
-		local r = Core.Rng.new("ponc", "around", pl.id, math.floor(os.clock() / 60))
+		local r = Core.Rng.new("ponc", "around", pl.id, math.floor(Life.now() / 60))
 		local a = r:next() * math.pi * 2
 		return { x = pl.x + math.cos(a) * 20, y = pl.y + math.sin(a) * 20, z = pl.z }
 	end
@@ -235,9 +242,66 @@ local function startPoint(Core, sc, v, id)
 end
 
 -- Gives a spawned person something to do for their scene.
+local SITTING = { sit = true, lean = true, idle = true }
+local INSIDE = { sit = true, lean = true, idle = true, work = true }
+local ROUGH = { rough = true, sit = true }
+
+local function sleepy(sp) return sp.path:find("sleep") ~= nil or sp.path:find("__lie_") ~= nil end
+
+-- A spot near pl for someone in this scene to use, or nil.
+local function spotFor(Core, s, sc, pl, near)
+	if not Life.settings.useSpots then return nil end
+	local p = Core.people.get(s.id)
+	local r = Core.Rng.new("ponc", "spot", s.id, math.floor(Life.now() / 30))
+	local gender = p and p.gender
+	if sc.kind == "rough" then
+		local asleep = sc.asleep
+		return Spots.claim(s.id, pl.x, pl.y, 35, ROUGH, r, gender, pl.z, function(sp)
+			if sp.kind ~= "rough" then return not asleep and sp.path:find("ground") ~= nil end
+			return sleepy(sp) == (asleep == true)
+		end)
+	elseif sc.kind == "around" then
+		if not r:chance(0.6) then return nil end
+		return Spots.claim(s.id, pl.x, pl.y, 50, SITTING, r, gender, pl.z, function(sp) return not sleepy(sp) end)
+	elseif sc.kind == "inside" then
+		local c = near or pl
+		return Spots.claim(s.id, c.x, c.y, 20, INSIDE, r, gender, c.z, function(sp)
+			return not sleepy(sp) and (sp.kind ~= "work" or (p ~= nil and p.place == (sc.place and sc.place.id)))
+		end)
+	end
+	return nil
+end
+
+-- Done with a spot: get up, take the device away, free the spot.
+local function leaveSpot(s)
+	local t = s.task
+	if t == nil or t.spot == nil then return end
+	if t.device then
+		if t.using then World.leaveSpot(s.ent) end
+		World.despawnSpot(t.device)
+	end
+	Spots.release(t.spot, s.id)
+	t.spot, t.device, t.using = nil, nil, false
+end
+Life.leaveSpot = leaveSpot
+leaveSpotLater = leaveSpot
+
 local function direct(Core, s, sc, v)
+	leaveSpot(s)
 	s.scene, s.place = sc.kind, sc.place and sc.place.id
 	local pl = sc.place
+	if (sc.kind == "rough" or sc.kind == "around" or sc.kind == "inside") and pl then
+		local near = sc.kind == "inside" and Places.inside(World, pl, v) or nil
+		local sp = spotFor(Core, s, sc, pl, near)
+		if sp then
+			local to = World.navPointNear(sp.x, sp.y, sp.z, 1.5) or sp
+			local stay = (sc.kind == "rough" and sc.asleep) and 3600 or (sc.kind == "inside" and 400 or 90 + (#s.id % 7) * 25)
+			s.task = { to = to, spot = sp, vanish = false, stay = stay, run = false }
+			s.task.sent = World.walk(s.ent, to.x, to.y, to.z, false)
+			s.task.since = Life.now()
+			return
+		end
+	end
 	if sc.kind == "leaving" then
 		-- off toward where they're going; if that's close, all the way there
 		local goal = sc.other
@@ -252,7 +316,7 @@ local function direct(Core, s, sc, v)
 	elseif sc.kind == "inside" then
 		s.task = { to = Places.inside(World, pl, v) or pl, vanish = false, idle = true }
 	elseif sc.kind == "around" then
-		local r = Core.Rng.new("ponc", "wander", s.id, math.floor(os.clock()))
+		local r = Core.Rng.new("ponc", "wander", s.id, math.floor(Life.now()))
 		local a = r:next() * math.pi * 2
 		local d = 10 + r:next() * 35
 		local q = World.navPointNear(pl.x + math.cos(a) * d, pl.y + math.sin(a) * d, pl.z, 6.0)
@@ -260,14 +324,14 @@ local function direct(Core, s, sc, v)
 	end
 	if s.task and s.task.to then
 		s.task.sent = World.walk(s.ent, s.task.to.x, s.task.to.y, s.task.to.z, s.task.run)
-		s.task.since = os.clock()
+		s.task.since = Life.now()
 	end
 end
 
 -- Takes over someone already in the world (out of their car, at `place`).
 function Life.adopt(Core, id, ent, place)
 	if Life.spawned[id] then return end
-	local s = { id = id, ent = ent, scene = "adopted", born = os.clock(), named = true }
+	local s = { id = id, ent = ent, scene = "adopted", born = Life.now(), named = true }
 	Life.spawned[id] = s
 	Life.count = Life.count + 1
 	local pos = World.npcPos(ent) or place
@@ -298,13 +362,49 @@ local function step(Core, s, v)
 	local state = World.npcState(s.ent)
 	if state == "dead" then
 		-- the core marks them dead (people.tick); the body stays a while
-		if not s.deadAt then s.deadAt = os.clock() end
-		if os.clock() - s.deadAt > 60 or (here and dist(here, v) > Life.settings.despawn) then despawn(Core, s, "dead") end
+		if not s.deadAt then s.deadAt = Life.now() end
+		if Life.now() - s.deadAt > 60 or (here and dist(here, v) > Life.settings.despawn) then despawn(Core, s, "dead") end
 		return
 	end
 	if here and dist(here, v) > Life.settings.despawn then despawn(Core, s, "out of range") return end
 	local t = s.task
 	if t == nil or t.to == nil then return end
+	if t.spot then
+		local clock = Life.now()
+		if t.device == nil then
+			if (here and dist(here, t.to) < 2.5) or World.moveState(s.ent) == 5 then
+				t.device = World.spawnSpot(t.spot.path, t.spot.x, t.spot.y, t.spot.z, t.spot.yaw)
+				t.placed = clock
+				if t.device == nil then leaveSpot(s) s.task = nil end
+			elseif clock - (t.since or 0) > 60 then
+				leaveSpot(s) s.task = nil -- couldn't get there
+			end
+		elseif not t.using then
+			if World.entity(t.device) and clock - t.placed > 0.5 then
+				if World.useSpot(t.device, s.ent) then
+					t.using, t.started = true, clock
+					Life.usedSpots = Life.usedSpots + 1
+				end
+			elseif clock - t.placed > 8 then
+				leaveSpot(s) s.task = nil
+			end
+		else
+			if not t.checked and clock - t.started > 3 then
+				t.checked = true
+				if not World.inSpot(s.ent) then
+					-- its animations don't fit them: not that workspot again for them
+					local p = Core.people.get(s.id)
+					Spots.misfit(t.spot, p and p.gender)
+					leaveSpot(s) s.task = nil
+					return
+				end
+			end
+			if clock - t.started > t.stay then
+				leaveSpot(s) s.task = nil -- something else next
+			end
+		end
+		return
+	end
 	local reached = here and dist(here, t.to) < 1.6
 	local ms = World.moveState(s.ent)
 	if reached or ms == 5 then
@@ -312,12 +412,12 @@ local function step(Core, s, v)
 		if t.wander then s.task = nil end -- pick another spot next time
 		return
 	end
-	if ms == 6 or ms == 3 or (os.clock() - (t.since or 0) > 90) then
+	if ms == 6 or ms == 3 or (Life.now() - (t.since or 0) > 90) then
 		-- couldn't get there (no path): gone out of sight if they were going in or away
 		if t.vanish and (here == nil or dist(here, v) > 25) then despawn(Core, s, "lost") return end
 		if t.wander then s.task = nil return end
 		t.sent = World.walk(s.ent, t.to.x, t.to.y, t.to.z, t.run)
-		t.since = os.clock()
+		t.since = Life.now()
 	end
 end
 
@@ -416,9 +516,10 @@ function Life.update(Core, now, v)
 				s = spawn(Core, w.id, startPoint(Core, w.sc, v, w.id), w.sc)
 				if s then s.pending = w.sc inScenes = inScenes + 1 end
 			end
-		elseif s.scene ~= w.sc.kind or s.place ~= (w.sc.place and w.sc.place.id) then
+		elseif s.scene ~= w.sc.kind or s.place ~= (w.sc.place and w.sc.place.id) or (w.sc.kind == "rough" and s.asleep ~= w.sc.asleep) then
+			s.asleep = w.sc.asleep
 			direct(Core, s, w.sc, v)
-		elseif s.task == nil and w.sc.kind == "around" and World.entity(s.ent) then
+		elseif s.task == nil and (w.sc.kind == "around" or w.sc.kind == "rough" or w.sc.kind == "inside") and World.entity(s.ent) then
 			direct(Core, s, w.sc, v)
 		end
 	end
@@ -454,6 +555,7 @@ function Life.clear(Core)
 	Life.plans = {}
 	Life.walked = {}
 	Life.order = nil
+	Spots.clear()
 end
 
 return Life

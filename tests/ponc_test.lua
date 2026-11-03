@@ -38,11 +38,36 @@ function NewObject(cls) local o = { cls = cls } function o:Copy() return self en
 MountEventData = { new = function() return {} end }
 VehicleComponent = { HasActiveDriver = function(_, veh, id) return mounted[id] ~= nil end }
 Vector4.Vector4To3 = function(v) return v end
+local devices, playing, observers, assembleQueue = {}, {}, {}, {}
+function Observe(cls, fn, cb) observers[cls .. "." .. fn] = cb end
+ResRef = { FromString = function(p) return p end }
+Vector3 = { new = function() return {} end }
+gameWorkspotSlidingBehaviour = { PlayAtResourcePosition = 0 }
+StaticEntitySpec = { new = function() return {} end }
 local navmeshEverywhere = true
 Game = {
 	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end, GetGame = function() return {} end } end,
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
+	["TSQ_NPC;"] = function() return {} end,
+	GetTargetingSystem = function() return { GetTargetParts = function() return false, nil end } end,
+	GetStaticEntitySystem = function() return {
+		SpawnEntity = function(_, spec) nextId = nextId + 1 local id = { hash = nextId }
+			local comp = {}
+			devices[id] = { spec = spec, comp = comp }
+			npcs[id] = { pos = { x = spec.position.x, y = spec.position.y, z = spec.position.z }, device = true }
+			-- assembled a moment later, as in the game
+			table.insert(assembleQueue, function()
+				local cb = observers["EntityBuilder.OnAssemble"]
+				if cb then cb(nil, { GetEntity = function() return { GetEntityID = function() return id end,
+					FindComponentByName = function() return comp end } end }) end
+			end)
+			return id end,
+		DespawnEntity = function(_, id) devices[id] = nil npcs[id] = nil end } end,
+	GetWorkspotSystem = function() return {
+		PlayInDeviceSimple = function(_, dev, npc) playing[npc.id] = dev.id end,
+		IsActorInWorkspot = function(_, npc) return playing[npc.id] ~= nil end,
+		SendFastExitSignal = function(_, npc) playing[npc.id] = nil end } end,
 	GetDynamicEntitySystem = function() return {
 		CreateEntity = function(_, spec) nextId = nextId + 1 local id = { hash = nextId }
 			npcs[id] = { spec = spec, pos = { x = spec.position.x, y = spec.position.y, z = spec.position.z } } return id end,
@@ -50,7 +75,7 @@ Game = {
 	FindEntityByID = function(id)
 		local n = npcs[id]
 		if n == nil then return nil end
-		return { GetWorldPosition = function() return n.pos end, IsDead = function() return n.dead == true end,
+		return { id = id, GetWorldPosition = function() return n.pos end, IsDead = function() return n.dead == true end,
 			IsDefeated = function() return false end,
 			GetAIControllerComponent = function() return { SendCommand = function(_, cmd) if cmd.cls == "AIUnmountCommand" then mounted[cmd.mountData.mountParentEntityId] = nil else mounted[cmd.mountData.mountParentEntityId] = id end end } end,
 			QueueEvent = function(_, ev) drives = drives + 1 n.target = ev.command.targetPosition end,
@@ -65,13 +90,22 @@ Game = {
 assert(loadfile(modroot .. "/init.lua"))()
 events.onInit()
 -- (a save is loaded in the core stub; give the core a moment, like the game does)
-local function tick(sec) for _ = 1, sec * 10 do Core.update(0.1) events.onUpdate(0.1) end end
+local simt = 0
+local function tick(sec)
+	for _ = 1, sec * 10 do
+		simt = simt + 0.1
+		local q = assembleQueue assembleQueue = {}
+		for _, f in ipairs(q) do f() end
+		Core.update(0.1) events.onUpdate(0.1)
+	end
+end
 -- every NPC walking arrives at once (moves straight to its target)
 local function arrive() for _, n in pairs(npcs) do if n.target then n.pos = { x = n.target.x, y = n.target.y, z = n.target.z } end end end
 
 local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
+Life.now = function() return simt end
 local World = require("modules/world")
 tick(1.2)
 check("places loaded", #Places.list > 8000)
@@ -138,6 +172,13 @@ for k, n in pairs(kinds) do print("scene", k, n) end
 check("never more than the limit", seen <= Life.settings.max + Life.settings.pedestrians)
 check("people walk the streets past V", (kinds.passing or 0) > 0)
 check("homeless people are at their spot", (kinds.rough or 0) > 0)
+do
+	local using, kinds2, sat = 0, {}, 0
+	for _ in pairs(playing) do using = using + 1 end
+	print("using spots now", using, "spots in use", (function() local n = 0 for _ in pairs(require("modules/spots").taken) do n = n + 1 end return n end)())
+	check("people sit, lean and use things at the game's spots", Life.usedSpots > 0)
+	check("each spot's workspot is set on its device", (function() for _, d in pairs(devices) do return d.comp.workspotResource ~= nil end return true end)())
+end
 
 -- traffic: our people driving where they're going, busier at rush hour than at night
 do
