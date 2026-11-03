@@ -105,6 +105,14 @@ function Population.populate(Core, home)
 		job = "unemployed", employed = working and #jobs > 0, workplaces = jobs, remember = false,
 		unemployed = UNEMPLOYED[home.district] or 0.1,
 	}) or {}
+	-- children: about a third of families (not on the street or on the road)
+	if life ~= "street" and life ~= "nomad" and rng:chance(0.35) then
+		local kids = Core.people.populate(home.id .. ":kids", {
+			count = rng:int(1, 2), lifestyle = life == "rich" and "child_rich" or "child", district = home.district,
+			home = home.id, job = "child", employed = false, minAge = 5, maxAge = 15, gangChance = 0, remember = false,
+		}) or {}
+		for _, k in ipairs(kids) do table.insert(ids, k) end
+	end
 	Population.homes[home.id] = ids
 	for _, id in ipairs(ids) do
 		Population.known[id] = true

@@ -75,7 +75,41 @@ function Spots.claim(id, x, y, r, kinds, rng, gender, z, fits)
 end
 
 function Spots.release(s, id)
-	if s and Spots.taken[s.n] == id then Spots.taken[s.n] = nil end
+	if s and s.n and Spots.taken[s.n] == id then Spots.taken[s.n] = nil end
+end
+
+-- Something to do right where someone is when there's no spot free: one of
+-- the game's stand-anywhere workspots (smoke, check a phone, drink, look
+-- around; for homeless people, warm their hands, look through the rubbish...).
+local ANYWHERE = {
+	idle = { "smoke", "cellphone", "phone_talk", "stand_around", "think", "drink", "coffee", "hotdog", "tablet", "arms_crossed" },
+	rough = { "heat_hands", "stand_around", "can__eat", "burger", "dance_freak" },
+}
+Spots.anywhere = nil
+
+local function anywherePaths(kind)
+	Spots.anywhere = Spots.anywhere or {}
+	if Spots.anywhere[kind] then return Spots.anywhere[kind] end
+	local out = {}
+	for _, p in ipairs(Spots.paths) do
+		local name = p:lower():match("([^\\]+)%.workspot$") or ""
+		local ok = (kind == "rough") == (p:find("homeless") ~= nil)
+		if ok and (name:find("__stand_ground") or name:find("__stand__")) and not name:find("lean") and not name:find("market") and not name:find("vending") then
+			for _, w in ipairs(ANYWHERE[kind]) do
+				if name:find(w, 1, true) then table.insert(out, p) break end
+			end
+		end
+	end
+	Spots.anywhere[kind] = out
+	return out
+end
+
+function Spots.here(x, y, z, yaw, kind, rng, gender)
+	local list = anywherePaths(kind == "rough" and "rough" or "idle")
+	local fits = {}
+	for _, p in ipairs(list) do if not Spots.bad[p .. ":" .. (gender or "")] then fits[#fits + 1] = p end end
+	if #fits == 0 then return nil end
+	return { x = x, y = y, z = z, yaw = yaw or 0, path = fits[rng and rng:int(1, #fits) or 1], kind = "idle", here = true }
 end
 
 -- The workspot doesn't work for this kind of body: don't use it for them again.

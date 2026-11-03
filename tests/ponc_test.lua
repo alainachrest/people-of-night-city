@@ -153,6 +153,16 @@ for id in pairs(Population.known) do
 end
 print("unemployed", jobless, "homeless", homeless)
 check("some people are out of work", jobless > 0)
+local kids, kidsPaid = 0, 0
+for id in pairs(Population.known) do
+	local p = Core.people.get(id)
+	if p.lifestyle == "child" or p.lifestyle == "child_rich" then
+		kids = kids + 1
+		if p.age >= 16 or (p.wage or 0) > 0 or p.employed ~= false or p.look.record:find("Child") == nil then kidsPaid = kidsPaid + 1 end
+	end
+end
+print("children", kids)
+check("families have children (under 16, no job or wage, child bodies)", kids > 0 and kidsPaid == 0)
 check("some people are homeless, with no job or wage", homeless > 0 and rough == homeless)
 
 -- same save, same people

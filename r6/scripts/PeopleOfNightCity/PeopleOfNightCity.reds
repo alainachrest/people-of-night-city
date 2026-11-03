@@ -9,6 +9,17 @@
 
 module PeopleOfNightCity
 
+// Hears about every entity as the game sets it up, so the CET side can fill in
+// the workspot of our workspot devices before they're used (CET observes
+// OnAssemble).
+public class PoNCEntityBuilder extends ScriptableService {
+    private func Initialize() {
+        GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Initialize", this, n"OnAssemble");
+    }
+
+    private cb func OnAssemble(event: ref<EntityLifecycleEvent>) {}
+}
+
 // Keeps PoNCSystem up to date with how hard it's raining.
 public class PoNCWeatherListener extends WeatherScriptListener {
     private let m_system: wref<PoNCSystem>;

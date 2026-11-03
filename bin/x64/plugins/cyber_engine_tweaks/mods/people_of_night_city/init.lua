@@ -189,6 +189,8 @@ local function update(dt)
 		for k, n in pairs(Life.moveStates) do ms[#ms + 1] = tostring(k) .. ":" .. n end
 		log("walk order states when re-sent (0 not running, 1 queued, 2 running, 3 cancelled, 4 interrupted, 6 failed, -1 none): "
 			.. table.concat(ms, " ") .. "; move-policy walks " .. Life.policyWalks)
+		log(string.format("spots: playing %d, animation didn't start %d, device never appeared %d, workspots filled in %d",
+			Life.spotStats.playing, Life.spotStats.misfit, Life.spotStats.noDevice, World.filled or 0))
 	end
 end
 
@@ -234,9 +236,9 @@ local function draw()
 	local r
 	r, changed = ImGui.SliderInt("Seen within (m)", Life.settings.radius, 40, 200)
 	if changed then Life.settings.radius = r Life.settings.despawn = r + 50 saveSettings() end
-	r, changed = ImGui.SliderInt("Most at once", Life.settings.max, 4, 60)
+	r, changed = ImGui.SliderInt("Most at once", Life.settings.max, 4, 150)
 	if changed then Life.settings.max = r saveSettings() end
-	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 40)
+	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 200)
 	if changed then Life.settings.pedestrians = r saveSettings() end
 	Life.settings.useSpots, changed = ImGui.Checkbox("Sit, lean and use things (the game's spots)", Life.settings.useSpots)
 	if changed then saveSettings() end

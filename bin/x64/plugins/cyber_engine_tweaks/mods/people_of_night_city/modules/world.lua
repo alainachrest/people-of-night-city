@@ -245,20 +245,22 @@ World.assembling = {}  -- entity hash -> workspot path
 
 -- Hooks the entity builder (once, at start): fills in our devices' workspots.
 function World.init()
-	pcall(function()
-		Observe("EntityBuilder", "OnAssemble", function(_, event)
-			local ok, ent = pcall(function() return event:GetEntity() end)
-			if not ok or ent == nil then return end
-			local h = tostring(ent:GetEntityID().hash)
-			local path = World.assembling[h]
-			if path == nil then return end
-			World.assembling[h] = nil
-			try(function()
-				local c = ent:FindComponentByName("workspot")
-				c.workspotResource = ResRef.FromString(path)
-			end)
+	local function onAssemble(_, event)
+		local ok, ent = pcall(function() return event:GetEntity() end)
+		if not ok or ent == nil then return end
+		local h = tostring(ent:GetEntityID().hash)
+		local path = World.assembling[h]
+		if path == nil then return end
+		World.assembling[h] = nil
+		World.filled = (World.filled or 0) + 1
+		try(function()
+			local c = ent:FindComponentByName("workspot")
+			c.workspotResource = ResRef.FromString(path)
 		end)
-	end)
+	end
+	pcall(function() Observe("PoNCEntityBuilder", "OnAssemble", onAssemble) end)
+	-- (World Builder has the same hook; whichever comes first fills it in)
+	pcall(function() Observe("EntityBuilder", "OnAssemble", onAssemble) end)
 end
 
 function World.spawnSpot(path, x, y, z, yaw)

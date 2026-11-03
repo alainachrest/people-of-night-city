@@ -25,13 +25,14 @@ local Life = {
 	spawned = {},       -- person id -> { ent, task, ... }
 	count = 0,
 	plans = {},         -- person id -> cached plan for one game hour
-	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20, useSpots = true },
+	settings = { enabled = true, radius = 120, despawn = 170, max = 40, pedestrians = 60, useSpots = true },
 	usedSpots = 0,      -- times someone has sat down, leant, ... (for the window)
+	spotStats = { playing = 0, misfit = 0, noDevice = 0 },
 	rewalks = 0,        -- walk orders given again because they didn't take
 	policyWalks = 0,    -- of those, sent the move-policy way
 	moveStates = {},    -- the walk order's state when it was re-sent (for the log)
 	spawnsPerPass = 6,  -- new NPCs a second at most (the game takes them a few at a time)
-	reach = 600,        -- people living this close to V can be out walking V's streets
+	reach = 900,        -- people living this close to V can be out walking V's streets
 	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
 	speed = 9,          -- metres per game second travelling between places (by car, train)
@@ -257,9 +258,13 @@ local ROUGH = { rough = true, sit = true }
 local function sleepy(sp) return sp.path:find("sleep") ~= nil or sp.path:find("__lie_") ~= nil end
 
 -- A spot near pl for someone in this scene to use, or nil.
+local function isChild(p) return p ~= nil and (p.lifestyle == "child" or p.lifestyle == "child_rich") end
+Life.isChild = isChild
+
 local function spotFor(Core, s, sc, pl, near)
 	if not Life.settings.useSpots then return nil end
 	local p = Core.people.get(s.id)
+	if isChild(p) then return nil end -- (the spots' animations are for grown-ups)
 	local r = Core.Rng.new("ponc", "spot", s.id, math.floor(Life.now() / 30))
 	local gender = p and p.gender
 	if sc.kind == "rough" then
@@ -302,6 +307,16 @@ local function direct(Core, s, sc, v)
 	if (sc.kind == "rough" or sc.kind == "around" or sc.kind == "inside") and pl then
 		local near = sc.kind == "inside" and Places.inside(World, pl, v) or nil
 		local sp = spotFor(Core, s, sc, pl, near)
+		if sp == nil and Life.settings.useSpots and not (sc.kind == "rough" and sc.asleep) and not isChild(Core.people.get(s.id)) then
+			-- no spot free: something to do right where they are (not just stand there)
+			local r = Core.Rng.new("ponc", "here", s.id, math.floor(Life.now() / 20))
+			local wantHere = sc.kind ~= "around" or r:chance(0.5)
+			local at = wantHere and World.npcPos(s.ent)
+			if at then
+				local p = Core.people.get(s.id)
+				sp = Spots.here(at.x, at.y, at.z, r:next() * 360 - 180, sc.kind, r, p and p.gender)
+			end
+		end
 		if sp then
 			local to = World.navPointNear(sp.x, sp.y, sp.z, 1.5) or sp
 			local stay = (sc.kind == "rough" and sc.asleep) and 3600 or (sc.kind == "inside" and 400 or 90 + (#s.id % 7) * 25)
@@ -430,13 +445,17 @@ local function step(Core, s, v)
 					Life.usedSpots = Life.usedSpots + 1
 				end
 			elseif clock - t.placed > 8 then
+				Life.spotStats.noDevice = Life.spotStats.noDevice + 1
 				leaveSpot(s) s.task = nil
 			end
 		else
 			if not t.checked and clock - t.started > 3 then
 				t.checked = true
-				if not World.inSpot(s.ent) then
+				if World.inSpot(s.ent) then
+					Life.spotStats.playing = Life.spotStats.playing + 1
+				else
 					-- its animations don't fit them: not that workspot again for them
+					Life.spotStats.misfit = Life.spotStats.misfit + 1
 					local p = Core.people.get(s.id)
 					Spots.misfit(t.spot, p and p.gender)
 					leaveSpot(s) s.task = nil
@@ -486,7 +505,7 @@ end
 local function passingWalk(Core, id, v, half)
 	local r = Core.Rng.new("ponc", "pass", id, half)
 	local a = r:next() * math.pi * 2
-	local d1, d2 = 55 + r:next() * 45, 55 + r:next() * 45
+	local d1, d2 = 35 + r:next() * 75, 50 + r:next() * 80
 	local b = a + math.pi + (r:next() - 0.5) * 1.6
 	local from = World.navPointNear(v.x + math.cos(a) * d1, v.y + math.sin(a) * d1, v.z, 12.0)
 	local to = World.navPointNear(v.x + math.cos(b) * d2, v.y + math.sin(b) * d2, v.z, 12.0)
@@ -516,7 +535,7 @@ local function passers(Core, now, v, taken)
 	local ids = o.ids
 	local out, looked = {}, 0
 	for _, id in ipairs(ids) do
-		if have + #out >= want or looked > 80 then break end
+		if have + #out >= want or looked > 200 then break end
 		if not taken[id] and not Life.spawned[id] and not Traffic.cars[id] and Life.walked[id] ~= half then
 			looked = looked + 1
 			local p = Core.people.get(id)

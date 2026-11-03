@@ -35,7 +35,8 @@ function Traffic.summary()
 end
 
 -- How likely someone is to have a car, by way of life.
-local CAR = { corpo = 0.8, rich = 1.0, worker = 0.45, vendor = 0.55, young = 0.35, nightlife = 0.5, medical = 0.6, nomad = 1.0, street = 0 }
+local CAR = { corpo = 0.8, rich = 1.0, worker = 0.45, vendor = 0.55, young = 0.35, nightlife = 0.5, medical = 0.6, nomad = 1.0, street = 0,
+	child = 0, child_rich = 0 }
 
 local MODELS = {
 	cheap = { "Vehicle.v_standard2_makigai_maimai_player", "Vehicle.v_standard2_archer_hella_player",
@@ -52,7 +53,8 @@ local MODELS = {
 	nomad = { "Vehicle.v_standard2_thorton_galena_nomad_player", "Vehicle.v_standard25_thorton_colby_nomad_player",
 		"Vehicle.v_sport2_quadra_type66_nomad_player" },
 }
-local KIND = { corpo = "good", rich = "rich", worker = "work", vendor = "work", young = "bike", nightlife = "cheap", medical = "cheap", nomad = "nomad" }
+-- (no motorbikes yet: their riders don't sit on them right)
+local KIND = { corpo = "good", rich = "rich", worker = "work", vendor = "work", young = "cheap", nightlife = "cheap", medical = "cheap", nomad = "nomad" }
 
 local function dist(a, b)
 	local dx, dy = a.x - b.x, a.y - b.y
