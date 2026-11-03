@@ -96,12 +96,16 @@ local function entry(Core, id, c, v)
 	-- from where they set off if that's near; otherwise down the road that way
 	if len < 170 then
 		local q = World.roadPointNear(from.x, from.y, from.z, 40)
-		if q and math.abs(q.z - v.z) < 15 then return q end
+		if q and math.abs(q.z - v.z) < 30 then return q end
 	end
-	local a = math.atan2(ay, ax) + (r:next() - 0.5) * 1.2
-	for _, d in ipairs({ 140, 110, 170, 90 }) do
-		local q = World.roadPointNear(v.x + math.cos(a) * d, v.y + math.sin(a) * d, v.z, 25)
-		if q and math.abs(q.z - v.z) < 15 then return q end
+	-- the side they're coming from first, then all the way round
+	local a0 = math.atan2(ay, ax) + (r:next() - 0.5) * 1.2
+	for k = 0, 7 do
+		local a = a0 + (k % 2 == 0 and 1 or -1) * math.ceil(k / 2) * math.pi / 4
+		for _, d in ipairs({ 140, 110, 170, 90 }) do
+			local q = World.roadPointNear(v.x + math.cos(a) * d, v.y + math.sin(a) * d, nil, 40)
+			if q and math.abs(q.z - v.z) < 30 then return q end
+		end
 	end
 	return nil
 end

@@ -162,8 +162,8 @@ local function update(dt)
 		for _, sp in pairs(Life.spawned) do kinds[sp.scene] = (kinds[sp.scene] or 0) + 1 end
 		local t = {}
 		for k, n in pairs(kinds) do t[#t + 1] = k .. " " .. n end
-		log(string.format("people %d, out near V %d (%s), cars %d (%s), game NPCs removed %d, spots used %d",
-			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Traffic.summary(), Crowd.removed, Life.usedSpots))
+		log(string.format("people %d, out near V %d (%s), cars %d (%s), game NPCs removed %d, spots used %d, walks re-sent %d",
+			Population.count, Life.count, table.concat(t, ", "), Traffic.count, Traffic.summary(), Crowd.removed, Life.usedSpots, Life.rewalks))
 	end
 end
 

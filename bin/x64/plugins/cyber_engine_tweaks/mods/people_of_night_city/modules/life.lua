@@ -27,6 +27,7 @@ local Life = {
 	plans = {},         -- person id -> cached plan for one game hour
 	settings = { enabled = true, radius = 120, despawn = 170, max = 24, pedestrians = 20, useSpots = true },
 	usedSpots = 0,      -- times someone has sat down, leant, ... (for the window)
+	rewalks = 0,        -- walk orders given again because they didn't take
 	reach = 600,        -- people living this close to V can be out walking V's streets
 	walked = {},        -- person id -> the half hour they last walked past V (once each)
 	window = 200,       -- game seconds of walking shown when someone leaves or arrives
@@ -366,6 +367,27 @@ local function settle(Core, s)
 	s.named = true
 end
 
+-- Someone told to walk who isn't getting anywhere (the order didn't take, was
+-- interrupted, or they've stood still for a few seconds): tell them again.
+-- The game's AI can drop an order given just as an NPC appears.
+local function keepGoing(s, t, here)
+	if t == nil or t.to == nil or here == nil then return end
+	local now = Life.now()
+	if t.lastPos == nil or dist(here, t.lastPos) > 0.5 then
+		t.lastPos, t.movedAt = { x = here.x, y = here.y }, now
+		return
+	end
+	if dist(here, t.to) < 2.5 then return end
+	local ms = World.moveState(s.ent)
+	local idle = ms ~= 1 and ms ~= 2 and ms ~= 5
+	if (idle and now - (t.since or 0) > 1.5) or now - (t.movedAt or now) > 4 then
+		t.sent = World.walk(s.ent, t.to.x, t.to.y, t.to.z, t.run)
+		t.since, t.movedAt = now, now
+		t.retries = (t.retries or 0) + 1
+		Life.rewalks = Life.rewalks + 1
+	end
+end
+
 local function step(Core, s, v)
 	settle(Core, s)
 	local here = World.npcPos(s.ent)
@@ -382,6 +404,7 @@ local function step(Core, s, v)
 	if t.spot then
 		local clock = Life.now()
 		if t.device == nil then
+			keepGoing(s, t, here)
 			if (here and dist(here, t.to) < 2.5) or World.moveState(s.ent) == 5 then
 				t.device = World.spawnSpot(t.spot.path, t.spot.x, t.spot.y, t.spot.z, t.spot.yaw)
 				t.placed = clock
@@ -417,6 +440,13 @@ local function step(Core, s, v)
 		return
 	end
 	local reached = here and dist(here, t.to) < 1.6
+	if not reached and not t.idle then keepGoing(s, t, here) end
+	if t.retries and t.retries > 6 then
+		-- they really can't get there
+		if t.vanish then despawn(Core, s, "stuck") return end
+		s.task = nil
+		return
+	end
 	local ms = World.moveState(s.ent)
 	if reached or ms == 5 then
 		if t.vanish then despawn(Core, s, "went in") return end
