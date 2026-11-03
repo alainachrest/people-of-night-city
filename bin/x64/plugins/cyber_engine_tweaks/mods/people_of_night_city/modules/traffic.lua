@@ -149,7 +149,7 @@ local function step(Core, car, v)
 		if World.entity(car.veh) and World.entity(car.npc) then
 			World.setScannerName(car.npc, Core.people.get(car.id).name, "")
 			car.held = World.stowHeld(car.npc)
-			World.mount(car.npc, car.veh, "seat_front_left")
+			World.mountNow(car.npc, car.veh, "seat_front_left")
 			car.stage, car.since = "mounting", Clock.now()
 		elseif age > 10 then
 			note("car never appeared (" .. car.model .. ")")
@@ -157,7 +157,20 @@ local function step(Core, car, v)
 			remove(Core, car, "never spawned")
 		end
 	elseif car.stage == "mounting" then
-		if World.hasDriver(car.veh) or age > 3 then
+		local seated = World.hasDriver(car.veh) or World.inVehicle(car.npc)
+		if not seated then
+			-- not in yet: the other way of getting them in, once; then give up
+			-- (an empty car never drives off)
+			if age > 1.5 and not car.triedAI then
+				car.triedAI = true
+				World.mount(car.npc, car.veh, "seat_front_left")
+			elseif age > 8 then
+				tally("nobody got in")
+				remove(Core, car, "nobody got in")
+			end
+			return
+		end
+		do
 			local goal = World.roadPointNear(car.to.x, car.to.y, car.to.z, 40) or car.to
 			-- (put away anything they were given since, too)
 			local more = World.stowHeld(car.npc)
@@ -182,7 +195,11 @@ local function step(Core, car, v)
 		-- out of the car: from here they're Life's, the car stays parked
 		if Clock.now() - car.handedAt > 2 or not World.hasDriver(car.veh) then
 			World.restoreHeld(car.npc, car.held)
-			Traffic.handOver(car.id, car.npc, car.to)
+			if not Traffic.handOver(car.id, car.npc, car.to) then
+				-- (no room for one more on foot: they've gone in out of sight)
+				World.despawn(car.npc)
+				pcall(function() Core.people.unbind(car.id) end)
+			end
 			car.npc = nil
 		end
 	elseif car.stage == "parked" or car.stage == "dead" then

@@ -354,7 +354,8 @@ end
 
 -- Takes over someone already in the world (out of their car, at `place`).
 function Life.adopt(Core, id, ent, place)
-	if Life.spawned[id] then return end
+	if Life.spawned[id] then return false end
+	if Life.count >= Life.settings.max + (Life.settings.pedestrians or 0) then return false end
 	local s = { id = id, ent = ent, scene = "adopted", born = Life.now(), named = true }
 	World.giveCarryItem(ent, Core.Rng.hash("ponc:carry:" .. id) % 100000)
 	Life.spawned[id] = s
@@ -362,6 +363,7 @@ function Life.adopt(Core, id, ent, place)
 	local pos = World.npcPos(ent) or place
 	local sc = { kind = "arriving", place = place, other = pos, left = 0 }
 	direct(Core, s, sc, pos)
+	return true
 end
 
 -- The finishing touches once the NPC is really there: its look is kept (so it

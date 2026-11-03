@@ -32,7 +32,7 @@ local Clock = require("modules/clock")
 World.roads = Roads
 Traffic.log = Life.note
 Traffic.busy = function(id) return Life.spawned[id] ~= nil end
-Traffic.handOver = function(id, ent, place) if PoNC.core then Life.adopt(PoNC.core, id, ent, place) end end
+Traffic.handOver = function(id, ent, place) return PoNC.core ~= nil and Life.adopt(PoNC.core, id, ent, place) end
 
 local CORE_MISSING = "People of Night City needs CyberScript with the shared core (API 2): the api-hooks-and-2.5 build of CyberScript."
 local SETTINGS_FILE = "settings.txt"

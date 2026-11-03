@@ -167,6 +167,40 @@ function World.mount(npcId, vehId, seat, out)
 	end) == true
 end
 
+-- Puts an NPC straight into a vehicle's seat (the mounting system directly, at
+-- once: no walking up and getting in).
+function World.mountNow(npcId, vehId, seat)
+	return try(function()
+		if Game.FindEntityByID(npcId) == nil or Game.FindEntityByID(vehId) == nil then return false end
+		seat = seat or "seat_front_left"
+		local data = NewObject("handle:gameMountEventData")
+		data.isInstant = true
+		data.slotName = seat
+		data.mountParentEntityId = vehId
+		data.entryAnimName = "forcedTransition"
+		local slot = NewObject("gamemountingMountingSlotId")
+		slot.id = seat
+		local info = NewObject("gamemountingMountingInfo")
+		info.childId = npcId
+		info.parentId = vehId
+		info.slotId = slot
+		local req = NewObject("handle:gamemountingMountingRequest")
+		req.lowLevelMountingInfo = info
+		req.mountData = data
+		Game.GetMountingFacility():Mount(req)
+		return true
+	end) == true
+end
+
+-- Is this NPC sitting in a vehicle?
+function World.inVehicle(npcId)
+	return try(function()
+		local npc = Game.FindEntityByID(npcId)
+		if npc == nil then return false end
+		return VehicleComponent.IsMountedToVehicle(npc:GetGame(), npc)
+	end) == true
+end
+
 -- Gets an NPC out of a vehicle.
 function World.unmount(npcId, vehId, seat)
 	return World.mount(npcId, vehId, seat, true)

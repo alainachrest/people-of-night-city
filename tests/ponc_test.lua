@@ -42,7 +42,8 @@ function GetSingleton() return { GetSystemRequestsHandler = function() return { 
 local mounted, drives = {}, 0
 function NewObject(cls) local o = { cls = cls } function o:Copy() return self end return o end
 MountEventData = { new = function() return {} end }
-VehicleComponent = { HasActiveDriver = function(_, id) return mounted[id] ~= nil end }
+VehicleComponent = { HasActiveDriver = function(_, id) return mounted[id] ~= nil end,
+	IsMountedToVehicle = function(_, npc) for _, who in pairs(mounted) do if who == npc.id then return true end end return false end }
 Vector4.Vector4To3 = function(v) return v end
 local devices, playing, observers, assembleQueue = {}, {}, {}, {}
 TweakDBID = { new = function(s) return s end }
@@ -56,6 +57,7 @@ Game = {
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end, IsGamePaused = function() return gamePaused == true end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
 	["TSQ_NPC;"] = function() return {} end,
+	GetMountingFacility = function() return { Mount = function(_, req) mounted[req.lowLevelMountingInfo.parentId] = req.lowLevelMountingInfo.childId end } end,
 	GetTransactionSystem = function() return {
 		GetItemInSlot = function(_, npc, slot) local it = inHand[npc.id] if it and slot == "AttachmentSlots.WeaponRight" then return { GetItemID = function() return it end } end end,
 		RemoveItemFromSlot = function(_, npc, slot) inHand[npc.id] = nil return true end,
@@ -137,7 +139,7 @@ check("people are in the core registry", Core.people.get(next(Population.known))
 local worker
 for id in pairs(Population.known) do
 	local p = Core.people.get(id)
-	if p and p.place and p.place ~= p.home and p.job ~= "unemployed" then worker = p break end
+	if p and p.place and p.place ~= p.home and p.job ~= "unemployed" and p.job ~= "child" then worker = p break end
 end
 check("working people get a job at a workplace nearby", worker ~= nil and Places.get(worker.place) ~= nil and Places.get(worker.place).use == "work")
 check("their workplace is a core place", worker and Core.places.get(worker.place) ~= nil)
