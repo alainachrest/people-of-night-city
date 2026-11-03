@@ -145,6 +145,10 @@ local function update(dt)
 	if not ok2 then log("crowd: " .. tostring(err2)) end
 	PoNC.status = "running"
 	PoNC.ready = true
+	if PoNC.outline then
+		for _, sp in pairs(Life.spawned) do World.outline(sp.ent, 2) end
+		for _, car in pairs(Traffic.cars) do if car.npc then World.outline(car.npc, 2) end end
+	end
 	-- what's going on, in the log now and then (and any game call that failed)
 	PoNC.diagTimer = (PoNC.diagTimer or 0) + 1
 	PoNC.loggedErrors = PoNC.loggedErrors or {}
@@ -246,8 +250,18 @@ local function draw()
 		end
 		for id, car in pairs(Traffic.cars) do if car.npc then add(id, car.npc, "driving") end end
 		table.sort(here, function(a, b) return a.d < b.d end)
+		local changed2
+		PoNC.outline, changed2 = ImGui.Checkbox("Outline our people (to tell them apart)", PoNC.outline == true)
+		if changed2 then
+			for _, sp in pairs(Life.spawned) do World.outline(sp.ent, PoNC.outline and 2 or 0) end
+			for _, car in pairs(Traffic.cars) do if car.npc then World.outline(car.npc, PoNC.outline and 2 or 0) end end
+		end
 		ImGui.Text(#here .. " of our people here now:")
 		for i = 1, math.min(#here, 60) do ImGui.Text(here[i].text) end
+		if ImGui.TreeNode("The game's own NPCs still near you (" .. #Crowd.keptList .. ")") then
+			for i = 1, math.min(#Crowd.keptList, 40) do ImGui.Text(Crowd.keptList[i].text) end
+			ImGui.TreePop()
+		end
 		if ImGui.TreeNode("Who lives or works near here") then
 			local lines = nearbyLines(Core)
 			for i = 1, math.min(#lines, 40) do ImGui.Text(lines[i].text) end

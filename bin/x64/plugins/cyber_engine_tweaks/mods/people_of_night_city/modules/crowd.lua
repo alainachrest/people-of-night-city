@@ -15,7 +15,8 @@ local Crowd = {
 	every = 2.0,
 	timer = 0,
 	removed = 0,
-	kept = {},     -- entity hash -> why it was kept (for the window)
+	kept = {},     -- why -> how many of the game's NPCs near V were kept (for the window)
+	keptList = {}, -- the game's NPCs kept near V: { d, text }
 }
 
 local function hash(ent)
@@ -95,14 +96,26 @@ function Crowd.update(dt, ours)
 	if Crowd.timer < Crowd.every then return end
 	Crowd.timer = 0
 	Crowd.kept = {}
+	Crowd.keptList = {}
+	local v = World.playerPos()
 	for _, npc in ipairs(World.npcsNear(Crowd.radius)) do
 		local why = Crowd.keep(npc, ours)
 		if why == nil then
 			if World.remove(npc) then Crowd.removed = Crowd.removed + 1 end
 		else
 			Crowd.kept[why] = (Crowd.kept[why] or 0) + 1
+			if why ~= "ours" and why ~= "dead" then
+				-- who the game's NPC is, for the window: its name, record, how far
+				local name = select(2, pcall(function() return npc:GetDisplayName() end))
+				local rec = select(2, pcall(function() return TDBID.ToStringDEBUG(npc:GetRecordID()) end))
+				local pos = select(2, pcall(function() return npc:GetWorldPosition() end))
+				local d = (v and type(pos) == "userdata") and math.sqrt((pos.x - v.x) ^ 2 + (pos.y - v.y) ^ 2) or 0
+				table.insert(Crowd.keptList, { d = d, text = string.format("%s (%s) - kept: %s, %dm",
+					type(name) == "string" and name ~= "" and name or "?", type(rec) == "string" and rec or "?", why, math.floor(d)) })
+			end
 		end
 	end
+	table.sort(Crowd.keptList, function(a, b) return a.d < b.d end)
 end
 
 return Crowd

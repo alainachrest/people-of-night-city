@@ -93,6 +93,20 @@ function World.moveState(id)
 	return try(function() return system():MoveState(id) end) or -1
 end
 
+-- Outlines an NPC (seen through walls) so you can tell which are ours; 0 = off.
+function World.outline(id, color)
+	try(function()
+		local e = Game.FindEntityByID(id)
+		if e == nil then return end
+		local ev = entRenderHighlightEvent.new()
+		ev.seeThroughWalls = true
+		ev.outlineIndex = color or 0
+		ev.fillIndex = 0
+		ev.opacity = (color or 0) > 0 and 1.0 or 0.0
+		e:QueueEvent(ev)
+	end)
+end
+
 function World.setScannerName(id, name, faction)
 	try(function() system():SetScannerName(id, name, faction or "") end)
 end

@@ -322,12 +322,11 @@ public class PoNCSystem extends ScriptableSystem {
 }
 
 // Scanning one of the mod's people shows their name and affiliation.
+// (Set whatever the game's own scan did: for crowd NPCs it can report it
+// didn't fill anything in, and the name still showed the game's own.)
 @wrapMethod(NPCPuppet)
 public const func CompileScannerChunks() -> Bool {
     let ok = wrappedMethod();
-    if !ok {
-        return ok;
-    }
     let system = PoNCSystem.Get();
     if !IsDefined(system) {
         return ok;
@@ -340,6 +339,7 @@ public const func CompileScannerChunks() -> Bool {
     if !IsDefined(board) {
         return ok;
     }
+    ok = true;
     let name = new ScannerName();
     name.Set(system.ScannerNameAt(i));
     board.SetVariant(GetAllBlackboardDefs().UI_ScannerModules.ScannerName, ToVariant(name));
