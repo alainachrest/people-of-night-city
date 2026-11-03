@@ -18,6 +18,7 @@
 local World = require("modules/world")
 local Places = require("modules/places")
 local Population = require("modules/population")
+local Traffic = require("modules/traffic")
 
 local Life = {
 	spawned = {},       -- person id -> { ent, task, ... }
@@ -94,6 +95,11 @@ local function plan(Core, id, now)
 	end
 	local start = (now.day * 24 + now.hour - back) * 3600
 	local from = prev and prev.place and Places.get(prev.place)
+	if from == nil and prev and prev.place == nil and cur.place then
+		-- out and about before (errands near home): they set off from home
+		local p = Core.people.get(id)
+		from = p and p.home and Places.get(p.home) or nil
+	end
 	local to = cur.place and Places.get(cur.place)
 	local jitter = Core.Rng.new("ponc", "leave", id, start):int(0, 1800)
 	local travel = (from and to) and (dist(from, to) / Life.speed + 120) or 300
@@ -152,6 +158,7 @@ local function scene(Core, id, now, v, r)
 	return nil
 end
 Life.scene = scene
+Life.plan = plan
 
 ---------------------------------------------------------------------------
 -- Acting it out
@@ -257,6 +264,17 @@ local function direct(Core, s, sc, v)
 	end
 end
 
+-- Takes over someone already in the world (out of their car, at `place`).
+function Life.adopt(Core, id, ent, place)
+	if Life.spawned[id] then return end
+	local s = { id = id, ent = ent, scene = "adopted", born = os.clock(), named = true }
+	Life.spawned[id] = s
+	Life.count = Life.count + 1
+	local pos = World.npcPos(ent) or place
+	local sc = { kind = "arriving", place = place, other = pos, left = 0 }
+	direct(Core, s, sc, pos)
+end
+
 -- The finishing touches once the NPC is really there: its look is kept (so it
 -- looks the same next time) and it scans as itself.
 local function settle(Core, s)
@@ -335,19 +353,25 @@ local function passers(Core, now, v, taken)
 	for _, s in pairs(Life.spawned) do if s.scene == "passing" then have = have + 1 end end
 	if have >= want then return {} end
 	-- the locals in a fixed order for this half hour (the same save, the same faces)
-	local ids = Population.locals(v.x, v.y, Life.reach)
-	local key = {}
-	for _, id in ipairs(ids) do key[id] = Core.Rng.new("ponc", "out", id, half):next() end
-	table.sort(ids, function(a, b) return key[a] < key[b] end)
+	local o = Life.order
+	if o == nil or o.half ~= half or dist(o.at, v) > 100 or os.clock() - o.made > 30 then
+		local list = Population.locals(v.x, v.y, Life.reach)
+		local key = {}
+		for _, id in ipairs(list) do key[id] = Core.Rng.new("ponc", "out", id, half):next() end
+		table.sort(list, function(a, b) return key[a] < key[b] end)
+		o = { half = half, at = { x = v.x, y = v.y }, made = os.clock(), ids = list }
+		Life.order = o
+	end
+	local ids = o.ids
 	local out, looked = {}, 0
 	for _, id in ipairs(ids) do
 		if have + #out >= want or looked > 80 then break end
-		if not taken[id] and not Life.spawned[id] and Life.walked[id] ~= half then
+		if not taken[id] and not Life.spawned[id] and not Traffic.cars[id] and Life.walked[id] ~= half then
 			looked = looked + 1
 			local p = Core.people.get(id)
 			if p and p.status ~= "dead" and p.status ~= "missing" and p.status ~= "hurt" then
 				local c = plan(Core, id, now)
-				if isOut(c, now.seconds) then
+				if isOut(c, now.seconds) and not Traffic.driving(Core, id, c, now.seconds) then
 					local sc = passingWalk(Core, id, v, half)
 					if sc then table.insert(out, { id = id, sc = sc }) end
 				end
@@ -370,16 +394,27 @@ function Life.update(Core, now, v)
 		local sc = scene(Core, id, now, v, r)
 		if sc then table.insert(wanted, { id = id, sc = sc, d = dist(sc.place, v) }) end
 	end
-	table.sort(wanted, function(a, b) return a.d < b.d end)
+	-- the brief moments first (someone coming out or going in), then the rest, nearest first
+	local RANK = { leaving = 1, arriving = 1, inside = 2, around = 3, rough = 3 }
+	table.sort(wanted, function(a, b)
+		local ra, rb = RANK[a.sc.kind] or 3, RANK[b.sc.kind] or 3
+		if ra ~= rb then return ra < rb end
+		return a.d < b.d
+	end)
 	local keep = {}
+	-- the people walking past V have their own limit
+	local inScenes = 0
+	for _, s in pairs(Life.spawned) do if s.scene ~= "passing" then inScenes = inScenes + 1 end end
 	for i, w in ipairs(wanted) do
 		if i > Life.settings.max then break end
 		keep[w.id] = true
 		local s = Life.spawned[w.id]
-		if s == nil then
-			if Life.count < Life.settings.max then
+		if s == nil and Traffic.cars[w.id] then
+			-- in their car
+		elseif s == nil then
+			if inScenes < Life.settings.max then
 				s = spawn(Core, w.id, startPoint(Core, w.sc, v, w.id), w.sc)
-				if s then s.pending = w.sc end
+				if s then s.pending = w.sc inScenes = inScenes + 1 end
 			end
 		elseif s.scene ~= w.sc.kind or s.place ~= (w.sc.place and w.sc.place.id) then
 			direct(Core, s, w.sc, v)
@@ -418,6 +453,7 @@ function Life.clear(Core)
 	for _, s in pairs(Life.spawned) do despawn(Core, s, "cleared") end
 	Life.plans = {}
 	Life.walked = {}
+	Life.order = nil
 end
 
 return Life

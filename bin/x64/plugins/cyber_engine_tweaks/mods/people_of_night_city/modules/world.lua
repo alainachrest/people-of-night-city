@@ -97,6 +97,87 @@ function World.setScannerName(id, name, faction)
 	try(function() system():SetScannerName(id, name, faction or "") end)
 end
 
+-- Spawns a vehicle from a record. Returns its entity id.
+function World.spawnVehicle(record, x, y, z, yaw)
+	return try(function()
+		local spec = DynamicEntitySpec.new()
+		spec.recordID = record
+		spec.position = Vector4.new(x, y, z, 1.0)
+		spec.orientation = EulerAngles.new(0, 0, yaw or 0):ToQuat()
+		spec.alwaysSpawned = true
+		spec.persistState = false
+		spec.persistSpawn = false
+		return Game.GetDynamicEntitySystem():CreateEntity(spec)
+	end)
+end
+
+-- Puts an NPC in a vehicle's seat (default the driver's).
+function World.mount(npcId, vehId, seat, out)
+	return try(function()
+		local npc, veh = Game.FindEntityByID(npcId), Game.FindEntityByID(vehId)
+		if npc == nil or veh == nil then return false end
+		local cmd = NewObject(out and "AIUnmountCommand" or "AIMountCommand")
+		local data = MountEventData.new()
+		data.mountParentEntityId = vehId
+		data.isInstant = not out
+		data.setEntityVisibleWhenMountFinish = true
+		data.removePitchRollRotationOnDismount = false
+		data.ignoreHLS = false
+		data.mountEventOptions = NewObject("handle:gameMountEventOptions")
+		data.mountEventOptions.silentUnmount = false
+		data.mountEventOptions.entityID = vehId
+		data.mountEventOptions.alive = true
+		data.mountEventOptions.occupiedByNeutral = true
+		data.slotName = seat or "seat_front_left"
+		cmd.mountData = data
+		cmd = cmd:Copy()
+		npc:GetAIControllerComponent():SendCommand(cmd)
+		return true
+	end) == true
+end
+
+-- Gets an NPC out of a vehicle.
+function World.unmount(npcId, vehId, seat)
+	return World.mount(npcId, vehId, seat, true)
+end
+
+-- Is someone sitting in the vehicle's driver's seat?
+function World.hasDriver(vehId)
+	return try(function()
+		local veh = Game.FindEntityByID(vehId)
+		if veh == nil then return false end
+		return VehicleComponent.HasActiveDriver(Game.GetPlayer():GetGame(), veh, vehId)
+	end) == true
+end
+
+-- Has a vehicle with a driver drive itself, on the roads and with the traffic
+-- rules, to a point.
+function World.drive(vehId, x, y, z, minSpeed, maxSpeed)
+	return try(function()
+		local veh = Game.FindEntityByID(vehId)
+		if veh == nil then return false end
+		local cmd = NewObject("handle:AIVehicleDriveToPointAutonomousCommand")
+		cmd.maxSpeed = maxSpeed or 14
+		cmd.minSpeed = minSpeed or 6
+		cmd.clearTrafficOnPath = false
+		cmd.minimumDistanceToTarget = 4
+		cmd.targetPosition = Vector4.Vector4To3(Vector4.new(x, y, z, 1))
+		cmd.driveDownTheRoadIndefinitely = false
+		cmd.needDriver = true
+		cmd.useKinematic = true
+		cmd = cmd:Copy()
+		local ev = NewObject("handle:AINPCCommandEvent")
+		ev.command = cmd
+		veh:QueueEvent(ev)
+		return true
+	end) == true
+end
+
+-- A point on the roads (the vehicles' navmesh) near a point, or nil.
+function World.roadPointNear(x, y, z, radius)
+	return World.navPointNear(x, y, z, radius, "Vehicle")
+end
+
 -- Every NPC within r metres of V (the game's and anyone else's).
 function World.npcsNear(r)
 	return try(function()
@@ -133,11 +214,11 @@ function World.onNavmesh(x, y, z, tolerance)
 end
 
 -- A point on the navmesh within `radius` of a point, or nil.
-function World.navPointNear(x, y, z, radius)
+function World.navPointNear(x, y, z, radius, agent)
 	local ns = nav()
 	if ns == nil then return nil end
 	return try(function()
-		local r = ns:FindPointInSphere(Vector4.new(x, y, z, 1.0), radius or 3.0, Enum.new("NavGenAgentSize", "Human"), false)
+		local r = ns:FindPointInSphere(Vector4.new(x, y, z, 1.0), radius or 3.0, Enum.new("NavGenAgentSize", agent or "Human"), false)
 		if r == nil or r.point == nil then return nil end
 		-- worldNavigationRequestStatus: OK (0) when a point was found
 		local status = r.status

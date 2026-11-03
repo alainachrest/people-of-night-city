@@ -16,7 +16,8 @@ local Population = {
 	known = {},     -- person id -> true
 	count = 0,
 	radius = 700,   -- homes this close to V get their people
-	jobRadius = 800, -- workplaces this close to a home can employ its people
+	jobRadius = 2000, -- workplaces this close to a home can employ its people
+	outer = 2000,   -- then, a few at a time, homes out to here (people who work near V)
 }
 
 -- Ways of life by district (weights).
@@ -64,13 +65,23 @@ local function addTo(index, key, id)
 	table.insert(index[key], id)
 end
 
--- The jobs people from a home can have: the workplaces nearest it ("placeId|job").
+-- The jobs people from a home can have ("placeId|job"): workplaces across a
+-- good part of the city (people don't all work next door), a couple close by.
 local function workplacesFor(Core, home)
-	local near = Places.near(home.x, home.y, Population.jobRadius, "work")
-	table.sort(near, function(a, b) return Places.dist(a, home.x, home.y) < Places.dist(b, home.x, home.y) end)
+	local all = Places.near(home.x, home.y, Population.jobRadius, "work")
+	table.sort(all, function(a, b) return a.n < b.n end)
+	local close, far = {}, {}
+	for _, w in ipairs(all) do
+		local d = Places.dist(w, home.x, home.y)
+		if d < 300 then table.insert(close, w) elseif d >= 500 then table.insert(far, w) end
+	end
+	local r = Core.Rng.new("ponc", "workplaces", home.id)
+	local picked = {}
+	for i = 1, 2 do if #close > 0 then table.insert(picked, close[r:int(1, #close)]) end end
+	for i = 1, 6 do if #far > 0 then table.insert(picked, far[r:int(1, #far)]) end end
 	local out = {}
-	for i = 1, math.min(8, #near) do
-		local w = near[i]
+	for i = 1, #picked do
+		local w = picked[i]
 		local titles = JOBS[w.door] or JOBS.decorative
 		local r = Core.Rng.new("ponc", "title", home.id, w.id)
 		table.insert(out, w.id .. "|" .. titles[r:int(1, #titles)])
@@ -135,13 +146,26 @@ end
 -- Gives the homes around V their people (a few per call, so it never stalls).
 function Population.around(Core, x, y, budget)
 	local made = 0
-	local homes = Places.near(x, y, Population.radius, "home")
-	table.sort(homes, function(a, b) return Places.dist(a, x, y) < Places.dist(b, x, y) end)
-	for _, h in ipairs(homes) do
+	budget = budget or 20
+	-- the homes around V first, then further out (people who work near V live
+	-- all over), a few at a time, so it never stalls
+	local key = math.floor(x / 200) .. ":" .. math.floor(y / 200)
+	if Population.ring == nil or Population.ring.key ~= key then
+		local homes = Places.near(x, y, Population.outer, "home")
+		local d = {}
+		for _, h in ipairs(homes) do d[h] = Places.dist(h, x, y) end
+		table.sort(homes, function(a, b) return d[a] < d[b] end)
+		Population.ring = { key = key, homes = homes, d = d, next = 1 }
+	end
+	local ring = Population.ring
+	while ring.next <= #ring.homes and made < budget do
+		local h = ring.homes[ring.next]
+		ring.next = ring.next + 1
 		if not Population.homes[h.id] then
 			Population.populate(Core, h)
 			made = made + 1
-			if made >= (budget or 20) then break end
+			-- out past V's neighbourhood: fewer at a time
+			if ring.d[h] > Population.radius and made >= math.ceil(budget / 3) then break end
 		end
 	end
 	for _, p in ipairs(Places.near(x, y, Population.radius)) do
@@ -183,6 +207,7 @@ end
 function Population.reset()
 	Population.homes, Population.byHome, Population.byWork, Population.known, Population.count = {}, {}, {}, {}, 0
 	Population.streets, Population.homeless = {}, {}
+	Population.ring = nil
 end
 
 return Population

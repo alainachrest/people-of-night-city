@@ -17,7 +17,9 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
 - **People**: the first time V comes within 700 m of a home, the core makes its
   people (1-4, `Core.people.populate`), from the save's seed: the same save always
   has the same people. Their way of life depends on the district. Working people
-  work at one of the workplaces nearest their home. Some are out of work (more
+  work somewhere within 2 km of home (a couple of jobs close by, most further
+  off), so most of them commute. Homes further out get their people a few at a
+  time, so the people who work near V are there too. Some are out of work (more
   in poor districts: 35% in Pacifica, 4% in City Center).
 - **Homeless people** sleep rough by a door on the street (1-3 at one door in
   12 in Pacifica, fewer elsewhere). They have no home, no job and no wage, and
@@ -41,6 +43,14 @@ Cyber Engine Tweaks, redscript and Codeware. Doesn't touch Gangs of Night City.
     who live within 600 m of V and are out (on errands, on their way somewhere)
     walk past V (20 at once, adjustable). Each walks past at most once every
     half hour;
+  - **traffic**: the game's traffic is turned off too (same `.ini`). Someone on
+    their way somewhere 150 m or more away, who has a car (more likely for
+    corpos and the rich, never for the homeless), is driving it: near V they're
+    a real car, them at the wheel, driving on the roads to where they're
+    actually going. So the roads are busy at shift changes and quiet at 3am.
+    Everyone has the same car every time. When they get there and V is near,
+    they get out and walk in; the car stays parked. Up to 15 cars at once
+    (adjustable);
   - **the game's other people** (standing, sitting, leaning about) are removed
     within 150 m of V, so the only civilians around are ours. Kept: anyone in a
     quest, vendors, police, gangs and other non-civilians, companions, NPCs other

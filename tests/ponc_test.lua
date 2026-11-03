@@ -33,9 +33,14 @@ local system = {
 	SetScannerName = function(_, id, name) if npcs[id] then npcs[id].scanName = name end end,
 }
 function GetSingleton() return { GetSystemRequestsHandler = function() return { IsPreGame = function() return false end } end } end
+local mounted, drives = {}, 0
+function NewObject(cls) local o = { cls = cls } function o:Copy() return self end return o end
+MountEventData = { new = function() return {} end }
+VehicleComponent = { HasActiveDriver = function(_, veh, id) return mounted[id] ~= nil end }
+Vector4.Vector4To3 = function(v) return v end
 local navmeshEverywhere = true
 Game = {
-	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end } end,
+	GetPlayer = function() return { GetWorldPosition = function() return V end, IsAttached = function() return true end, GetGame = function() return {} end } end,
 	GetSystemRequestsHandler = function() return { IsGameInMenu = function() return false end } end,
 	GetScriptableSystemsContainer = function() return { Get = function() return system end } end,
 	GetDynamicEntitySystem = function() return {
@@ -47,6 +52,8 @@ Game = {
 		if n == nil then return nil end
 		return { GetWorldPosition = function() return n.pos end, IsDead = function() return n.dead == true end,
 			IsDefeated = function() return false end,
+			GetAIControllerComponent = function() return { SendCommand = function(_, cmd) if cmd.cls == "AIUnmountCommand" then mounted[cmd.mountData.mountParentEntityId] = nil else mounted[cmd.mountData.mountParentEntityId] = id end end } end,
+			QueueEvent = function(_, ev) drives = drives + 1 n.target = ev.command.targetPosition end,
 			GetCurrentAppearanceName = function() return { value = "appearance_" .. id.hash } end }
 	end,
 	GetNavigationSystem = function() return {
@@ -131,6 +138,34 @@ for k, n in pairs(kinds) do print("scene", k, n) end
 check("never more than the limit", seen <= Life.settings.max + Life.settings.pedestrians)
 check("people walk the streets past V", (kinds.passing or 0) > 0)
 check("homeless people are at their spot", (kinds.rough or 0) > 0)
+
+-- traffic: our people driving where they're going, busier at rush hour than at night
+do
+	local Traffic = require("modules/traffic")
+	local function carsAt(hour)
+		Traffic.clear(Core)
+		local most = 0
+		for m = 0, 50, 5 do
+			clock = 3600 * 24 * 16 + 3600 * hour + m * 60
+			tick(4)
+			most = math.max(most, Traffic.count)
+		end
+		return most
+	end
+	local rush = carsAt(8)
+	local driving, owner = false, nil
+	for id, car in pairs(Traffic.cars) do
+		owner = id
+		if car.stage == "driving" or car.stage == "parked" then driving = true end
+	end
+	check("each car has its owner at the wheel, driving", driving and next(mounted) ~= nil and drives > 0)
+	local night = carsAt(3)
+	print("cars at 08:00", rush, "at 03:00", night)
+	check("people drive past V, more at rush hour than at night", rush > 0 and rush > night)
+	local p = owner and Core.people.get(owner)
+	check("a person drives the same car every time", p == nil or Traffic.carOf(Core, p) == Traffic.carOf(Core, p))
+	Traffic.clear(Core)
+end
 local named = 0
 for _, n in pairs(npcs) do if n.scanName then named = named + 1 end end
 check("spawned people scan as themselves", named > 0)
@@ -162,7 +197,7 @@ Places.interiors = {}
 Life.clear(Core)
 local vanished = false
 for h = 6, 10 do
-	clock = 3600 * 24 * 12 + 3600 * h
+	clock = 3600 * 24 * 15 + 3600 * h -- a Tuesday (day 12 is a Saturday: no work)
 	for _ = 1, 12 do
 		clock = clock + 300
 		tick(1.1)

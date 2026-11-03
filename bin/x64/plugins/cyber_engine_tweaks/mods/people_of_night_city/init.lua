@@ -25,6 +25,10 @@ local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
 local Crowd = require("modules/crowd")
+local Traffic = require("modules/traffic")
+Traffic.log = Life.note
+Traffic.busy = function(id) return Life.spawned[id] ~= nil end
+Traffic.handOver = function(id, ent, place) if PoNC.core then Life.adopt(PoNC.core, id, ent, place) end end
 
 local CORE_MISSING = "People of Night City needs CyberScript with the shared core (API 2): the api-hooks-and-2.5 build of CyberScript."
 local SETTINGS_FILE = "settings.txt"
@@ -50,6 +54,8 @@ local function loadSettings()
 	for line in f:lines() do
 		local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
 		if k == "replaceGamePeople" then Crowd.settings.replace = v == "true"
+		elseif k == "traffic" then Traffic.settings.enabled = v == "true"
+		elseif k == "cars" then Traffic.settings.cars = tonumber(v) or Traffic.settings.cars
 		elseif k and Life.settings[k] ~= nil then
 			if type(Life.settings[k]) == "boolean" then Life.settings[k] = v == "true"
 			else Life.settings[k] = tonumber(v) or Life.settings[k] end
@@ -65,6 +71,8 @@ local function saveSettings()
 		f:write(k .. " = " .. tostring(Life.settings[k]) .. "\n")
 	end
 	f:write("replaceGamePeople = " .. tostring(Crowd.settings.replace) .. "\n")
+	f:write("traffic = " .. tostring(Traffic.settings.enabled) .. "\n")
+	f:write("cars = " .. tostring(Traffic.settings.cars) .. "\n")
 	f:close()
 end
 
@@ -102,6 +110,7 @@ local function update(dt)
 	if PoNC.boundTo ~= Core.state() then
 		PoNC.boundTo = Core.state()
 		Life.clear(Core)
+		Traffic.clear(Core)
 		Population.reset()
 	end
 	if PoNC.popTimer >= 3.0 then
@@ -115,8 +124,11 @@ local function update(dt)
 		log(PoNC.status)
 		return
 	end
+	local ok3, err3 = pcall(Traffic.update, Core, now, v, function(id) return Life.plan(Core, id, now) end)
+	if not ok3 then log("traffic: " .. tostring(err3)) end
 	local ours = {}
 	for _, sp in pairs(Life.spawned) do if sp.ent and sp.ent.hash then ours[sp.ent.hash] = true end end
+	for _, car in pairs(Traffic.cars) do if car.npc and car.npc.hash then ours[car.npc.hash] = true end end
 	local ok2, err2 = pcall(Crowd.update, PoNC.crowdDt or 1.0, ours)
 	if not ok2 then log("crowd: " .. tostring(err2)) end
 	PoNC.status = "running"
@@ -169,13 +181,18 @@ local function draw()
 	if changed then Life.settings.max = r saveSettings() end
 	r, changed = ImGui.SliderInt("People on the streets", Life.settings.pedestrians or 0, 0, 40)
 	if changed then Life.settings.pedestrians = r saveSettings() end
+	Traffic.settings.enabled, changed = ImGui.Checkbox("Our people driving (traffic)", Traffic.settings.enabled)
+	if changed then saveSettings() end
+	r, changed = ImGui.SliderInt("Cars on the road", Traffic.settings.cars or 0, 0, 40)
+	if changed then Traffic.settings.cars = r saveSettings() end
+	ImGui.Text("Cars near you: " .. Traffic.count)
 	Crowd.settings.replace, changed = ImGui.Checkbox("Replace the game's people with ours", Crowd.settings.replace)
 	if changed then saveSettings() end
 	local kept = {}
 	for why, n in pairs(Crowd.kept) do table.insert(kept, why .. " " .. n) end
 	table.sort(kept)
 	ImGui.Text(string.format("Game NPCs removed: %d   Kept nearby: %s", Crowd.removed, #kept > 0 and table.concat(kept, ", ") or "none"))
-	if ImGui.Button("Clear everyone near me") and Core then Life.clear(Core) end
+	if ImGui.Button("Clear everyone near me") and Core then Life.clear(Core) Traffic.clear(Core) end
 	if Core and Core.state() and ImGui.CollapsingHeader("People near you") then
 		local lines = nearbyLines(Core)
 		for i = 1, math.min(#lines, 40) do ImGui.Text(lines[i].text) end
@@ -212,7 +229,7 @@ registerForEvent("onOverlayClose", function() PoNC.overlay = false end)
 registerForEvent("onDraw", draw)
 registerForEvent("onShutdown", function()
 	local Core = core()
-	if Core then Life.clear(Core) end
+	if Core then Life.clear(Core) Traffic.clear(Core) end
 end)
 
 -- For other mods: GetMod("people_of_night_city")
