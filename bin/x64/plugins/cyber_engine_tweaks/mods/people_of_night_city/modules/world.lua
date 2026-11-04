@@ -302,7 +302,10 @@ function World.spawnSpot(path, x, y, z, yaw)
 		local spec = StaticEntitySpec.new()
 		spec.templatePath = World.DEVICE
 		spec.position = Vector4.new(x, y, z, 1.0)
-		spec.orientation = EulerAngles.new(0, 0, yaw or 0):ToQuat()
+		-- the spot's own rotation (about the vertical) as a quaternion, the way
+		-- the game stores it, not through Euler angles and their yaw convention
+		local h = math.rad(yaw or 0) / 2
+		spec.orientation = Quaternion.new(0, 0, math.sin(h), math.cos(h))
 		spec.attached = true
 		local id = Game.GetStaticEntitySystem():SpawnEntity(spec)
 		if id then World.assembling[tostring(id.hash)] = path end

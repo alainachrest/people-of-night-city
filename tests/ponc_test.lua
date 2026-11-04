@@ -25,6 +25,7 @@ local function ent(id) return npcs[id] end
 DynamicEntitySpec = { new = function() return {} end }
 Vector4 = { new = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end }
 EulerAngles = { new = function() return { ToQuat = function() return {} end } end }
+Quaternion = { new = function(i, j, k, r) return { i = i, j = j, k = k, r = r } end }
 Enum = { new = function(a, b) return b end }
 local navmeshEverywhere = true
 local inHand = {}  -- npc id -> what they carry
