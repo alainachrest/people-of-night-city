@@ -12,6 +12,7 @@ local World = require("modules/world")
 local Places = require("modules/places")
 local Population = require("modules/population")
 local Clock = require("modules/clock")
+local Budget = require("modules/budget")
 
 local Traffic = {
 	settings = { enabled = true, cars = 15 },
@@ -213,7 +214,9 @@ function Traffic.update(Core, now, v, plan)
 		for _, car in pairs(Traffic.cars) do remove(Core, car, "off") end
 		return
 	end
-	for _, car in pairs(Traffic.cars) do step(Core, car, v) end
+	local list = {}
+	for _, car in pairs(Traffic.cars) do list[#list + 1] = car end
+	for _, car in ipairs(list) do if Traffic.cars[car.id] == car then step(Core, car, v) end end
 	local want = Traffic.settings.cars or 0
 	if Traffic.count >= want then return end
 	-- who might drive past: the locals in a fixed order for this half hour,
@@ -222,16 +225,23 @@ function Traffic.update(Core, now, v, plan)
 	local o = Traffic.order
 	if o == nil or o.half ~= half or dist(o.at, v) > 150 or Clock.now() - o.made > 30 then
 		local ids = Population.locals(v.x, v.y, Traffic.reach)
-		local key = {}
-		for _, id in ipairs(ids) do key[id] = Core.Rng.new("ponc", "drive", id, half):next() end
-		table.sort(ids, function(a, b) return key[a] < key[b] end)
-		o = { half = half, at = { x = v.x, y = v.y }, made = Clock.now(), ids = ids, next = 1 }
+		-- (the same scattered order for the half hour, without sorting them)
+		local n, stride = #ids, 1
+		for _, p in ipairs({ 7919, 104729, 1299709 }) do if n % p ~= 0 then stride = p break end end
+		local shuffled = {}
+		local start = Core.Rng.new("ponc", "drive", half):int(0, math.max(0, n - 1))
+		for k = 0, n - 1 do
+			if k % 500 == 0 then Budget.check() end
+			shuffled[k + 1] = ids[(start + k * stride) % n + 1]
+		end
+		o = { half = half, at = { x = v.x, y = v.y }, made = Clock.now(), ids = shuffled, next = 1 }
 		Traffic.order = o
 	end
 	-- a slice of them each pass, round and round
 	local looked, started, n = 0, 0, #o.ids
 	while looked < math.min(60, n) do
 		if Traffic.count >= want or started >= 2 then break end
+		Budget.check()
 		local id = o.ids[o.next]
 		o.next = o.next % n + 1
 		looked = looked + 1

@@ -6,6 +6,8 @@
 -- keep, and any mod can change it.
 
 local Places = require("modules/places")
+local Budget = require("modules/budget")
+Places.budget = Budget
 
 local Population = {
 	homes = {},     -- place id -> { person ids }
@@ -167,6 +169,7 @@ function Population.around(Core, x, y, budget)
 	end
 	local ring = Population.ring
 	while ring.next <= #ring.homes and made < budget do
+		Budget.check()
 		local h = ring.homes[ring.next]
 		ring.next = ring.next + 1
 		if not Population.homes[h.id] then
@@ -177,6 +180,7 @@ function Population.around(Core, x, y, budget)
 		end
 	end
 	for _, p in ipairs(Places.near(x, y, Population.radius)) do
+		Budget.check()
 		if Population.isRoughSpot(p) and not Population.streets[p.id] then
 			Population.populateStreet(Core, p)
 		end
@@ -205,7 +209,8 @@ end
 -- of (x, y): the people who could be out and about there.
 function Population.locals(x, y, r)
 	local out = {}
-	for _, p in ipairs(Places.near(x, y, r)) do
+	for i, p in ipairs(Places.near(x, y, r)) do
+		if i % 100 == 0 then Budget.check() end
 		for _, id in ipairs(Population.byHome[p.id] or {}) do table.insert(out, id) end
 		for _, id in ipairs(Population.streets[p.id] or {}) do table.insert(out, id) end
 	end

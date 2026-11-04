@@ -20,6 +20,7 @@ local Places = require("modules/places")
 local Population = require("modules/population")
 local Traffic = require("modules/traffic")
 local Spots = require("modules/spots")
+local Budget = require("modules/budget")
 
 local Life = {
 	spawned = {},       -- person id -> { ent, task, ... }
@@ -267,6 +268,9 @@ local function spotFor(Core, s, sc, pl, near)
 	if isChild(p) then return nil end -- (the spots' animations are for grown-ups)
 	local r = Core.Rng.new("ponc", "spot", s.id, math.floor(Life.now() / 30))
 	local gender = p and p.gender
+	-- spots on the level they're on (not a floor above or below)
+	local at = World.npcPos(s.ent)
+	if at then pl = { x = pl.x, y = pl.y, z = at.z, id = pl.id } end
 	if sc.kind == "rough" then
 		local asleep = sc.asleep
 		return Spots.claim(s.id, pl.x, pl.y, 35, ROUGH, r, gender, pl.z, function(sp)
@@ -315,6 +319,15 @@ local function direct(Core, s, sc, v)
 			if at then
 				local p = Core.people.get(s.id)
 				sp = Spots.here(at.x, at.y, at.z, r:next() * 360 - 180, sc.kind, r, p and p.gender)
+			end
+		end
+		if sp and not sp.here then
+			-- the spot has to be where they can walk up to it, on the same level
+			local to = World.navPointNear(sp.x, sp.y, sp.z, 1.5)
+			if to == nil or math.abs(to.z - sp.z) > 1.0 then
+				Spots.release(sp, s.id)
+				Life.spotStats.unreachable = (Life.spotStats.unreachable or 0) + 1
+				sp = nil
 			end
 		end
 		if sp then
@@ -497,6 +510,13 @@ end
 -- The streets: people out and about walk past V (in place of the game's crowd)
 ---------------------------------------------------------------------------
 
+-- A step through a list of n that visits every one, scattered (a prime that
+-- doesn't divide n).
+function Life.stride(n)
+	for _, p in ipairs({ 7919, 104729, 1299709, 15485863 }) do if n % p ~= 0 then return p end end
+	return 1
+end
+
 local function isOut(c, t)
 	if c.cur == nil then return false end
 	if t >= c.leave and t < c.arrive then return true end           -- on their way somewhere
@@ -527,17 +547,20 @@ local function passers(Core, now, v, taken)
 	-- the locals in a fixed order for this half hour (the same save, the same faces)
 	local o = Life.order
 	if o == nil or o.half ~= half or dist(o.at, v) > 100 or os.clock() - o.made > 30 then
+		-- (a scattered walk through them, the same for the half hour: no
+		-- sorting thousands of people in one frame)
 		local list = Population.locals(v.x, v.y, Life.reach)
-		local key = {}
-		for _, id in ipairs(list) do key[id] = Core.Rng.new("ponc", "out", id, half):next() end
-		table.sort(list, function(a, b) return key[a] < key[b] end)
-		o = { half = half, at = { x = v.x, y = v.y }, made = os.clock(), ids = list }
+		local r = Core.Rng.new("ponc", "out", half)
+		o = { half = half, at = { x = v.x, y = v.y }, made = os.clock(), ids = list,
+			start = r:int(0, math.max(0, #list - 1)), stride = Life.stride(#list) }
 		Life.order = o
 	end
-	local ids = o.ids
+	local ids, n = o.ids, #o.ids
 	local out, looked = {}, 0
-	for _, id in ipairs(ids) do
+	for k = 0, n - 1 do
+		local id = ids[(o.start + k * o.stride) % n + 1]
 		if have + #out >= want or looked > 200 then break end
+		Budget.check()
 		if not taken[id] and not Life.spawned[id] and not Traffic.cars[id] and Life.walked[id] ~= half then
 			looked = looked + 1
 			local p = Core.people.get(id)
@@ -563,6 +586,7 @@ function Life.update(Core, now, v)
 	local wanted = {}
 	local ids = Population.involved(v.x, v.y, r + 40)
 	for _, id in ipairs(ids) do
+		Budget.check()
 		local sc = scene(Core, id, now, v, r)
 		if sc then table.insert(wanted, { id = id, sc = sc, d = dist(sc.place, v) }) end
 	end
@@ -608,7 +632,12 @@ function Life.update(Core, now, v)
 			Life.walked[w.id] = half
 		end
 	end
-	for id, s in pairs(Life.spawned) do
+	local list = {}
+	for id, s in pairs(Life.spawned) do list[#list + 1] = s end
+	for _, s in ipairs(list) do
+		local id = s.id
+		Budget.check()
+		if Life.spawned[id] ~= s then goto continue end
 		-- never turned up, or taken out of the world by something else: let them go
 		if World.entity(s.ent) then
 			s.seen = true
@@ -626,6 +655,7 @@ function Life.update(Core, now, v)
 			s.task.vanish = true
 			if s.scene == "inside" or s.scene == "around" or s.scene == "rough" then despawn(Core, s, "scene over") end
 		end
+		::continue::
 	end
 end
 

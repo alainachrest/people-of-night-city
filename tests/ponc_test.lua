@@ -99,16 +99,24 @@ Game = {
 	NameToString = function(n) return n.value end,
 }
 
+if os.getenv("PROF") then dofile(os.getenv("PROF")) end -- PROFILE_HOOK
 assert(loadfile(modroot .. "/init.lua"))()
 events.onInit()
 -- (a save is loaded in the core stub; give the core a moment, like the game does)
 local simt = 0
+local frames, slowest, slowFrames = 0, 0, 0
 local function tick(sec)
 	for _ = 1, sec * 10 do
 		simt = simt + 0.1
 		local q = assembleQueue assembleQueue = {}
 		for _, f in ipairs(q) do f() end
-		Core.update(0.1) events.onUpdate(0.1)
+		Core.update(0.1)
+		local t0 = os.clock()
+		events.onUpdate(0.1)
+		local ft = os.clock() - t0
+		frames = frames + 1
+		if ft > slowest then slowest = ft end
+		if ft > 0.008 then slowFrames = slowFrames + 1 end
 	end
 end
 -- every NPC walking arrives at once (moves straight to its target)
@@ -118,6 +126,7 @@ local Places = require("modules/places")
 local Population = require("modules/population")
 local Life = require("modules/life")
 Life.now = function() return simt end
+require("modules/budget").ms = os.getenv("BUDGET_MS") and tonumber(os.getenv("BUDGET_MS")) or 100000
 require("modules/crowd").now = function() return simt end
 local World = require("modules/world")
 tick(1.2)
@@ -351,4 +360,7 @@ do
 end
 
 print(string.format("people %d, homes %d", Population.count, (function() local n = 0 for _ in pairs(Population.homes) do n = n + 1 end return n end)()))
+if PROFILE then for k, v in pairs(PROFILE) do print(string.format("PROF %-26s calls %5d  avg %6.2f ms  max %7.2f ms", k, v.n, v.t / v.n * 1000, v.max * 1000)) end end
+if GAPS then local l = {} for k, v in pairs(GAPS) do l[#l + 1] = { k, v } end table.sort(l, function(a, b) return a[2] > b[2] end) for i = 1, math.min(8, #l) do print(string.format("GAP %.0f ms %s", l[i][2] * 1000, l[i][1])) end end
+print(string.format("frames %d, slowest %.1f ms, over 8 ms: %d", frames, slowest * 1000, slowFrames))
 print("passed " .. pass .. ", failed " .. fail)

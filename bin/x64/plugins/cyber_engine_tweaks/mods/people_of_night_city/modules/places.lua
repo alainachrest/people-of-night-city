@@ -45,7 +45,9 @@ end
 function Places.near(x, y, r, use)
 	local out = {}
 	local c = Places.cell
+	local Budget = Places.budget
 	for cx = math.floor((x - r) / c), math.floor((x + r) / c) do
+		if Budget then Budget.check() end
 		for cy = math.floor((y - r) / c), math.floor((y + r) / c) do
 			for _, p in ipairs(Places.grid[key(cx, cy)] or {}) do
 				if (use == nil or p.use == use) and Places.dist(p, x, y) <= r then table.insert(out, p) end

@@ -29,6 +29,7 @@ local Traffic = require("modules/traffic")
 local Spots = require("modules/spots")
 local Roads = require("modules/roads")
 local Clock = require("modules/clock")
+local Budget = require("modules/budget")
 World.roads = Roads
 Traffic.log = Life.note
 Traffic.busy = function(id) return Life.spawned[id] ~= nil end
@@ -104,6 +105,8 @@ local function paused()
 	return World.try(function() return Game.GetSystemRequestsHandler():IsGamePaused() end) == true
 end
 
+local pass
+
 local function update(dt)
 	-- nothing at all while the game is paused; then a moment to settle
 	if paused() then
@@ -125,8 +128,20 @@ local function update(dt)
 	if PoNC.ready then pcall(Crowd.frame) end
 	PoNC.timer = PoNC.timer + dt
 	PoNC.popTimer = PoNC.popTimer + dt
-	if PoNC.timer < 1.0 then return end
-	PoNC.timer = 0
+	-- the once-a-second pass, a couple of milliseconds a frame (see Budget)
+	if PoNC.pass == nil then
+		if PoNC.timer < 1.0 then return end
+		PoNC.timer = 0
+		PoNC.pass = coroutine.create(pass)
+	end
+	Budget.start()
+	local ok, err = coroutine.resume(PoNC.pass)
+	if not ok then log("error: " .. tostring(err)) PoNC.pass = nil return end
+	if coroutine.status(PoNC.pass) == "dead" then PoNC.pass = nil end
+end
+
+-- One pass: who's around V and what they're doing.
+pass = function()
 	local Core = core()
 	if Core == nil then PoNC.status = CORE_MISSING return end
 	if Core.state() == nil then PoNC.status = "waiting for CyberScript to load the save" return end
@@ -167,8 +182,15 @@ local function update(dt)
 	PoNC.status = "running"
 	PoNC.ready = true
 	if PoNC.outline then
-		for _, sp in pairs(Life.spawned) do World.outline(sp.ent, 2) end
-		for _, car in pairs(Traffic.cars) do if car.npc then World.outline(car.npc, 2) end end
+		-- (each one once: re-outlining everyone every second costs a frame)
+		PoNC.outlined = PoNC.outlined or {}
+		for _, sp in pairs(Life.spawned) do
+			local k = tostring(sp.ent.hash)
+			if not PoNC.outlined[k] then PoNC.outlined[k] = true World.outline(sp.ent, 2) end
+		end
+		for _, car in pairs(Traffic.cars) do
+			if car.npc and not PoNC.outlined[tostring(car.npc.hash)] then PoNC.outlined[tostring(car.npc.hash)] = true World.outline(car.npc, 2) end
+		end
 	end
 	-- what's going on, in the log now and then (and any game call that failed)
 	PoNC.diagTimer = (PoNC.diagTimer or 0) + 1
@@ -189,8 +211,8 @@ local function update(dt)
 		for k, n in pairs(Life.moveStates) do ms[#ms + 1] = tostring(k) .. ":" .. n end
 		log("walk order states when re-sent (0 not running, 1 queued, 2 running, 3 cancelled, 4 interrupted, 6 failed, -1 none): "
 			.. table.concat(ms, " ") .. "; move-policy walks " .. Life.policyWalks)
-		log(string.format("spots: playing %d, animation didn't start %d, device never appeared %d, workspots filled in %d",
-			Life.spotStats.playing, Life.spotStats.misfit, Life.spotStats.noDevice, World.filled or 0))
+		log(string.format("spots: playing %d, animation didn't start %d, device never appeared %d, workspots filled in %d, spots out of reach %d",
+			Life.spotStats.playing, Life.spotStats.misfit, Life.spotStats.noDevice, World.filled or 0, Life.spotStats.unreachable or 0))
 	end
 end
 
@@ -280,6 +302,7 @@ local function draw()
 		local changed2
 		PoNC.outline, changed2 = ImGui.Checkbox("Outline our people (to tell them apart)", PoNC.outline == true)
 		if changed2 then
+			PoNC.outlined = {}
 			for _, sp in pairs(Life.spawned) do World.outline(sp.ent, PoNC.outline and 2 or 0) end
 			for _, car in pairs(Traffic.cars) do if car.npc then World.outline(car.npc, PoNC.outline and 2 or 0) end end
 		end

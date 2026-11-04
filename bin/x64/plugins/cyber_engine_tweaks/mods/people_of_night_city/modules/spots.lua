@@ -48,7 +48,7 @@ function Spots.near(x, y, r, kinds, z)
 	for cx = c0, c1 do
 		for cy = r0, r1 do
 			for _, s in ipairs(Spots.grid[key(cx, cy)] or {}) do
-				if (kinds == nil or kinds[s.kind]) and d2(s, x, y) <= r * r and (z == nil or math.abs(s.z - z) < 4) then
+				if (kinds == nil or kinds[s.kind]) and d2(s, x, y) <= r * r and (z == nil or math.abs(s.z - z) < 2) then
 					out[#out + 1] = s
 				end
 			end
@@ -82,7 +82,7 @@ end
 -- the game's stand-anywhere workspots (smoke, check a phone, drink, look
 -- around; for homeless people, warm their hands, look through the rubbish...).
 local ANYWHERE = {
-	idle = { "smoke", "cellphone", "phone_talk", "stand_around", "think", "drink", "coffee", "hotdog", "tablet", "arms_crossed" },
+	idle = { "smoke", "cellphone", "phone_talk", "drink", "coffee", "hotdog", "tablet", "eat" },
 	rough = { "heat_hands", "stand_around", "can__eat", "burger", "dance_freak" },
 }
 Spots.anywhere = nil
